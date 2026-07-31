@@ -118,6 +118,11 @@ namespace KnowledgeFramework
             if (pawn != null) Cache.Remove(pawn.thingIDNumber);
         }
 
+        public static void InvalidateAll()
+        {
+            Cache.Clear();
+        }
+
         private static KnowledgeEntry SafeEntry(Provider provider, Pawn pawn)
         {
             try

@@ -12,10 +12,12 @@ $checks = @(
     @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'group.Sum(record => record.experience)'; Name = 'Wildlife biome accumulation' },
     @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'ColonyBiomeRecords'; Name = 'Wildlife all-map biome source' },
     @{ Path = 'Horticulture - Novel Seeds/Source/CultivarRegistry.cs'; Pattern = 'KnowledgeMenuUI.Draw'; Name = 'Horticulture adapter' },
-    @{ Path = 'Horticulture - Novel Seeds/Source/CultivarRegistry.cs'; Pattern = 'AggregateKnowledge(group)'; Name = 'Horticulture colony accumulation' },
+    @{ Path = 'Horticulture - Novel Seeds/Source/PlantKnowledge.cs'; Pattern = 'KnowledgeService.ColonyKnowledge(DomainId)'; Name = 'Horticulture framework colony source' },
     @{ Path = 'AquacultureFishing/Source/FishingExpertise.cs'; Pattern = 'aquacultureFishingProgression'; Name = 'Aquaculture legacy save key' },
     @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'colonistSpeciesKnowledge'; Name = 'Wildlife legacy save key' },
-    @{ Path = 'Horticulture - Novel Seeds/Source/ModCore.cs'; Pattern = 'horticultureKnowledge'; Name = 'Horticulture legacy save key' }
+    @{ Path = 'Horticulture - Novel Seeds/Source/ModCore.cs'; Pattern = 'Scribe.mode != LoadSaveMode.Saving'; Name = 'Horticulture legacy keys are load only' },
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkColony'; Name = 'framework colony save key' },
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkExpertise'; Name = 'framework expertise save key' }
 )
 
 $failed = @()

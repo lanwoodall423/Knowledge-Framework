@@ -2,10 +2,11 @@
 
 ## Stable boundary
 
-`KnowledgeFramework.dll` owns the four-rank contract, provider registry, reusable pawn/subject
-record, cache, and the single pawn Bio presentation. It does not own domain progression data.
-Wildlife and Aquaculture adapt their existing authoritative save records; Horticulture owns its
-new additive pawn/crop records. Providers register by stable ID and replacement is idempotent.
+`KnowledgeFramework.dll` owns the versioned domain API, subject registry, colony and pawn knowledge,
+optional pawn expertise, reveal queries, effect and UI providers, change events, validation, caches,
+save records, and the single pawn Bio presentation. Domain content and balance remain in consumers.
+Legacy consumer stores can be imported idempotently or exposed through adapters; consumers never
+receive mutable framework save records.
 
 ## Rank contract
 
@@ -23,10 +24,12 @@ delegate clicks to existing mod windows. No adapter draws another Bio panel.
 
 ## Save compatibility
 
-The shared record serializes a pawn reference, subject def name, and XP, but adapters may retain
-older records. No Wildlife or Aquaculture scribe key is renamed or duplicated. Missing providers,
-pawns, or defs are ignored after load, and an old save without Horticulture knowledge initializes
-an empty additive list.
+Framework records use stable domain and subject IDs and separate colony, pawn, and expertise lists.
+Colony records contain no pawn reference. Horticulture reads its old `horticultureKnowledge` key and
+imports personal values, aggregate colony values, expertise, and event counters by maximum-value
+merge, then stops writing the obsolete key. Wildlife and Aquaculture retain their authoritative
+legacy keys until their domain adapters are migrated. Missing domains and subjects remain as
+diagnosable orphan records rather than being discarded.
 
 ## Standard detailed menu
 
@@ -43,4 +46,5 @@ mirrors progression data.
 - Aquaculture keeps its Journal Expertise page, Horticulture keeps its Cultivar Registry Knowledge
   page, and Wildlife keeps its existing knowledge-window entry points.
 - `KnowledgeMenuState` is presentation-only and resets safely when pawns leave the colony.
-- Existing scribe keys and progression effects are unchanged.
+- Existing consumer scribe keys remain readable and progression effects are owned by domain effect
+  providers rather than the framework.
