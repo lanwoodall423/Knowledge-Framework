@@ -59,7 +59,7 @@ namespace KnowledgeFramework
         }
     }
 
-    public sealed class GameComponent_KnowledgeFramework : GameComponent
+    public sealed partial class GameComponent_KnowledgeFramework : GameComponent
     {
         private List<ColonyKnowledgeSaveRecord> colonyKnowledge = new List<ColonyKnowledgeSaveRecord>();
         private List<PawnKnowledgeSaveRecord> pawnKnowledge = new List<PawnKnowledgeSaveRecord>();
@@ -70,8 +70,8 @@ namespace KnowledgeFramework
 
         public static GameComponent_KnowledgeFramework Current => Verse.Current.Game?.GetComponent<GameComponent_KnowledgeFramework>();
 
-        public GameComponent_KnowledgeFramework() { RebuildIndexes(); }
-        public GameComponent_KnowledgeFramework(Game game) { RebuildIndexes(); }
+        public GameComponent_KnowledgeFramework() { RebuildIndexes(); InitializeV2(); KnowledgeRegistry.ResetGameCaches(); }
+        public GameComponent_KnowledgeFramework(Game game) { RebuildIndexes(); InitializeV2(); KnowledgeRegistry.ResetGameCaches(); }
 
         public override void ExposeData()
         {
@@ -79,13 +79,17 @@ namespace KnowledgeFramework
             Scribe_Collections.Look(ref colonyKnowledge, "knowledgeFrameworkColony", LookMode.Deep);
             Scribe_Collections.Look(ref pawnKnowledge, "knowledgeFrameworkPawns", LookMode.Deep);
             Scribe_Collections.Look(ref pawnExpertise, "knowledgeFrameworkExpertise", LookMode.Deep);
+            ExposeV2Data();
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 if (colonyKnowledge == null) colonyKnowledge = new List<ColonyKnowledgeSaveRecord>();
                 if (pawnKnowledge == null) pawnKnowledge = new List<PawnKnowledgeSaveRecord>();
                 if (pawnExpertise == null) pawnExpertise = new List<PawnExpertiseSaveRecord>();
                 RebuildIndexes();
+                RebuildV2Indexes();
+                MigrateLegacyV1();
                 KnowledgeDomainRegistry.InvalidateDomain(null);
+                KnowledgeRegistry.ResetGameCaches();
             }
         }
 
@@ -93,6 +97,8 @@ namespace KnowledgeFramework
         {
             base.FinalizeInit();
             RebuildIndexes();
+            RebuildV2Indexes();
+            MigrateLegacyV1();
         }
 
         internal ColonyKnowledgeSaveRecord Colony(string domainId, string subjectId, bool create)
@@ -213,38 +219,42 @@ namespace KnowledgeFramework
         public static KnowledgeSnapshot GetColonyKnowledge(string domainId, string subjectId)
         {
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
-            ColonyKnowledgeSaveRecord record = GameComponent_KnowledgeFramework.Current?.Colony(domainId, subjectId, false);
-            return record == null ? new KnowledgeSnapshot(domainId, subjectId, null, true, 0f, KnowledgeRank.Novice, 0f, null)
-                : Snapshot(record, domain, null, true);
+            KnowledgeFacetSnapshotV2 value = KnowledgeQuery.Facet(domainId, subjectId, null, null, KnowledgeScope.Colony, false);
+            KnowledgeRankThresholds thresholds = domain?.knowledgeRanks ?? KnowledgeRankThresholds.Default;
+            return new KnowledgeSnapshot(domainId, subjectId, null, true, value.directAmount,
+                thresholds.RankFor(value.directAmount), thresholds.ProgressFor(value.directAmount), value.EventCounts.ToDictionary(pair => pair.Key, pair => pair.Value));
         }
 
         public static KnowledgeSnapshot GetPawnKnowledge(string domainId, string subjectId, Pawn pawn)
         {
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
-            PawnKnowledgeSaveRecord record = GameComponent_KnowledgeFramework.Current?.Personal(domainId, subjectId, pawn, false);
-            return record == null ? new KnowledgeSnapshot(domainId, subjectId, pawn, false, 0f, KnowledgeRank.Novice, 0f, null)
-                : Snapshot(record, domain, pawn, false);
+            KnowledgeFacetSnapshotV2 value = KnowledgeQuery.Facet(domainId, subjectId, null, pawn, KnowledgeScope.Personal, false);
+            KnowledgeRankThresholds thresholds = domain?.knowledgeRanks ?? KnowledgeRankThresholds.Default;
+            return new KnowledgeSnapshot(domainId, subjectId, pawn, false, value.directAmount,
+                thresholds.RankFor(value.directAmount), thresholds.ProgressFor(value.directAmount), value.EventCounts.ToDictionary(pair => pair.Key, pair => pair.Value));
         }
 
         public static ExpertiseSnapshot GetPawnExpertise(string domainId, Pawn pawn)
         {
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
-            if (domain?.expertiseEnabled != true) return new ExpertiseSnapshot(domainId, pawn, 0f, KnowledgeRank.Novice, 0f);
-            PawnExpertiseSaveRecord record = GameComponent_KnowledgeFramework.Current?.Expertise(domainId, pawn, false);
-            float experience = record?.experience ?? 0f;
-            return new ExpertiseSnapshot(domainId, pawn, experience, domain.expertiseRanks.RankFor(experience),
-                domain.expertiseRanks.ProgressFor(experience));
+            if (domain?.expertiseEnabled != true && KnowledgeRegistry.Schema(domainId)?.expertiseTracks.Count == 0)
+                return new ExpertiseSnapshot(domainId, pawn, 0f, KnowledgeRank.Novice, 0f);
+            float experience = KnowledgeQuery.Expertise(domainId, pawn).amount;
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
+            KnowledgeRankThresholds thresholds = domain?.expertiseRanks ??
+                (schema?.ExpertiseTrack(KnowledgeSchema.DefaultExpertiseTrackId) ?? schema?.expertiseTracks.FirstOrDefault())?.ranks ?? KnowledgeRankThresholds.Default;
+            return new ExpertiseSnapshot(domainId, pawn, experience, thresholds.RankFor(experience), thresholds.ProgressFor(experience));
         }
 
         public static float GetColonyKnowledgeExperience(string domainId, string subjectId) =>
-            GameComponent_KnowledgeFramework.Current?.Colony(domainId, subjectId, false)?.experience ?? 0f;
+            KnowledgeQuery.Facet(domainId, subjectId, null, null, KnowledgeScope.Colony, false).directAmount;
 
         public static float GetPawnKnowledgeExperience(string domainId, string subjectId, Pawn pawn) =>
-            GameComponent_KnowledgeFramework.Current?.Personal(domainId, subjectId, pawn, false)?.experience ?? 0f;
+            KnowledgeQuery.Facet(domainId, subjectId, null, pawn, KnowledgeScope.Personal, false).directAmount;
 
         public static float GetPawnExpertiseExperience(string domainId, Pawn pawn) =>
-            KnowledgeDomainRegistry.Domain(domainId)?.expertiseEnabled == true
-                ? GameComponent_KnowledgeFramework.Current?.Expertise(domainId, pawn, false)?.experience ?? 0f : 0f;
+            (KnowledgeDomainRegistry.Domain(domainId)?.expertiseEnabled == true || KnowledgeRegistry.Schema(domainId)?.expertiseTracks.Count > 0)
+                ? KnowledgeQuery.Expertise(domainId, pawn).amount : 0f;
 
         public static KnowledgeRank GetColonyKnowledgeRank(string domainId, string subjectId)
         {
@@ -268,21 +278,17 @@ namespace KnowledgeFramework
         public static int GetEventCount(string domainId, string subjectId, string reasonId, Pawn pawn = null, bool colony = false)
         {
             if (reasonId.NullOrEmpty()) return 0;
-            ColonyKnowledgeSaveRecord record = colony
-                ? GameComponent_KnowledgeFramework.Current?.Colony(domainId, subjectId, false)
-                : GameComponent_KnowledgeFramework.Current?.Personal(domainId, subjectId, pawn, false);
-            return record != null && record.eventCounts.TryGetValue(reasonId, out int count) ? count : 0;
+            return KnowledgeQuery.Facet(domainId, subjectId, null, pawn,
+                colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, false).EventCount(reasonId);
         }
 
         public static IReadOnlyList<KnowledgeSnapshot> ColonyKnowledge(string domainId) =>
-            GameComponent_KnowledgeFramework.Current?.ColonyRecords(domainId)
-                .Select(record => Snapshot(record, KnowledgeDomainRegistry.Domain(domainId), null, true)).ToList()
-            ?? (IReadOnlyList<KnowledgeSnapshot>)Array.Empty<KnowledgeSnapshot>();
+            KnowledgeQuery.ColonyFacets(domainId).GroupBy(record => record.subjectId)
+                .Select(group => GetColonyKnowledge(domainId, group.Key)).ToList();
 
         public static IReadOnlyList<KnowledgeSnapshot> PawnKnowledge(string domainId, Pawn pawn) =>
-            GameComponent_KnowledgeFramework.Current?.PawnRecords(domainId, pawn)
-                .Select(record => Snapshot(record, KnowledgeDomainRegistry.Domain(domainId), pawn, false)).ToList()
-            ?? (IReadOnlyList<KnowledgeSnapshot>)Array.Empty<KnowledgeSnapshot>();
+            KnowledgeQuery.PersonalFacets(domainId, pawn).GroupBy(record => record.subjectId)
+                .Select(group => GetPawnKnowledge(domainId, group.Key, pawn)).ToList();
 
         public static bool Award(KnowledgeAward award)
         {
@@ -290,31 +296,51 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (award == null || domain == null || component == null || award.subjectId.NullOrEmpty()) return false;
             if (award.pawnKnowledge > 0f && award.pawn == null) return false;
+            if (!KnowledgeMath.IsFinite(award.pawnKnowledge) || !KnowledgeMath.IsFinite(award.colonyKnowledge) ||
+                !KnowledgeMath.IsFinite(award.expertise) || award.pawnKnowledge < 0f || award.colonyKnowledge < 0f || award.expertise < 0f)
+                return false;
 
             KnowledgeSnapshot oldPawn = award.pawn == null ? null : GetPawnKnowledge(award.domainId, award.subjectId, award.pawn);
             KnowledgeSnapshot oldColony = GetColonyKnowledge(award.domainId, award.subjectId);
             ExpertiseSnapshot oldExpertise = award.pawn == null ? null : GetPawnExpertise(award.domainId, award.pawn);
-            if (award.pawnKnowledge > 0f)
+            KnowledgeTransaction transaction = new KnowledgeTransaction { source = award.source, notify = award.notifyRankChange };
+            if (award.pawnKnowledge > 0f || award.expertise > 0f)
             {
-                PawnKnowledgeSaveRecord personal = component.Personal(award.domainId, award.subjectId, award.pawn, true);
-                personal.experience += award.pawnKnowledge;
-                Increment(personal.eventCounts, award.reasonId);
+                transaction.Add(new KnowledgeObservation
+                {
+                    observer = award.pawn,
+                    domainId = award.domainId,
+                    subjectId = award.subjectId,
+                    directKnowledge = award.pawnKnowledge,
+                    directExpertise = domain.expertiseEnabled ? award.expertise : 0f,
+                    suppressConfiguredKnowledge = true,
+                    reasonId = award.reasonId,
+                    source = award.source,
+                    notify = award.notifyRankChange
+                });
             }
             if (award.colonyKnowledge > 0f)
             {
-                ColonyKnowledgeSaveRecord colony = component.Colony(award.domainId, award.subjectId, true);
-                colony.experience += award.colonyKnowledge;
-                Increment(colony.eventCounts, award.reasonId);
+                transaction.Add(new KnowledgeObservation
+                {
+                    domainId = award.domainId,
+                    subjectId = award.subjectId,
+                    targetColony = true,
+                    directKnowledge = award.colonyKnowledge,
+                    suppressConfiguredKnowledge = true,
+                    reasonId = award.reasonId,
+                    source = award.source,
+                    notify = award.notifyRankChange
+                });
             }
-            if (award.expertise > 0f && award.pawn != null && domain.expertiseEnabled)
-                component.Expertise(award.domainId, award.pawn, true).experience += award.expertise;
+            if (transaction.Observations.Count == 0) return true;
+            KnowledgeTransactionResult transactionResult = KnowledgeEngine.Submit(transaction);
+            if (!transactionResult.success) return false;
 
             KnowledgeSnapshot newPawn = award.pawn == null ? null : GetPawnKnowledge(award.domainId, award.subjectId, award.pawn);
             KnowledgeSnapshot newColony = GetColonyKnowledge(award.domainId, award.subjectId);
             ExpertiseSnapshot newExpertise = award.pawn == null ? null : GetPawnExpertise(award.domainId, award.pawn);
-            KnowledgeProviderRegistry.Invalidate(award.pawn);
-            KnowledgeChanged?.Invoke(new KnowledgeChangedEvent(award, oldPawn, newPawn, oldColony, newColony,
-                oldExpertise, newExpertise));
+            InvokeKnowledgeChanged(new KnowledgeChangedEvent(award, oldPawn, newPawn, oldColony, newColony, oldExpertise, newExpertise));
             if (award.notifyRankChange) NotifyRankChanges(domain, award, oldPawn, newPawn, oldExpertise, newExpertise);
             return true;
         }
@@ -323,28 +349,24 @@ namespace KnowledgeFramework
             float colonyExperience, float expertiseExperience, IDictionary<string, int> eventCounts = null)
         {
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
-            if (domain == null || component == null || subjectId.NullOrEmpty()) return false;
-            if (pawn != null)
-            {
-                PawnKnowledgeSaveRecord personal = component.Personal(domainId, subjectId, pawn, true);
-                personal.experience = Mathf.Max(personal.experience, pawnExperience);
-                MergeCounts(personal.eventCounts, eventCounts);
-                if (domain.expertiseEnabled)
-                {
-                    PawnExpertiseSaveRecord expertise = component.Expertise(domainId, pawn, true);
-                    expertise.experience = Mathf.Max(expertise.experience, expertiseExperience);
-                }
-            }
-            ColonyKnowledgeSaveRecord colony = component.Colony(domainId, subjectId, true);
-            colony.experience = Mathf.Max(colony.experience, colonyExperience);
-            MergeCounts(colony.eventCounts, eventCounts);
-            KnowledgeProviderRegistry.Invalidate(pawn);
+            if ((domain == null && schema == null) || component == null || subjectId.NullOrEmpty()) return false;
+            if (!KnowledgeMath.IsFinite(pawnExperience) || !KnowledgeMath.IsFinite(colonyExperience) ||
+                !KnowledgeMath.IsFinite(expertiseExperience) || pawnExperience < 0f || colonyExperience < 0f || expertiseExperience < 0f)
+                return false;
+            component.ImportMinimumV2(domainId, subjectId, pawn, pawnExperience, colonyExperience,
+                (domain?.expertiseEnabled == true || schema?.expertiseTracks.Count > 0) ? expertiseExperience : 0f, eventCounts);
+            if (pawn == null || colonyExperience > 0f) KnowledgeProviderRegistry.InvalidateAll();
+            else KnowledgeProviderRegistry.Invalidate(pawn);
             return true;
         }
 
         public static bool MeetsReveal(string domainId, string subjectId, string revealId, Pawn pawn = null, bool colony = false)
         {
+            if (KnowledgeRegistry.Schema(domainId)?.reveals.Any(item => item?.defName == revealId) == true)
+                return KnowledgeDiscovery.MeetsReveal(domainId, subjectId, revealId, pawn,
+                    colony ? KnowledgeScope.Colony : KnowledgeScope.Personal);
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
             if (domain == null || revealId.NullOrEmpty() || !domain.revealThresholds.TryGetValue(revealId, out float threshold)) return false;
             return (colony ? GetColonyKnowledge(domainId, subjectId) : GetPawnKnowledge(domainId, subjectId, pawn)).experience >= threshold;
@@ -352,6 +374,8 @@ namespace KnowledgeFramework
 
         public static float RevealThreshold(string domainId, string revealId)
         {
+            KnowledgeRevealDef reveal = KnowledgeRegistry.Schema(domainId)?.reveals.FirstOrDefault(item => item?.defName == revealId);
+            if (reveal != null) return reveal.minimumKnowledge;
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
             return domain != null && revealId != null && domain.revealThresholds.TryGetValue(revealId, out float threshold)
                 ? threshold : float.PositiveInfinity;
@@ -360,7 +384,17 @@ namespace KnowledgeFramework
         public static float ApplyEffects(string domainId, string subjectId, string effectId, Pawn pawn, float value)
         {
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.Domain(domainId);
-            if (domain == null || effectId.NullOrEmpty()) return value;
+            if (effectId.NullOrEmpty() || domain == null && KnowledgeRegistry.Schema(domainId) == null) return value;
+            value = KnowledgeEffects.Query(new KnowledgeEffectQuery
+            {
+                domainId = domainId,
+                subjectId = subjectId,
+                channelId = effectId,
+                pawn = pawn,
+                scope = KnowledgeScope.Personal,
+                baseValue = value
+            }).numericValue;
+            if (domain == null) return value;
             KnowledgeEffectContext context = new KnowledgeEffectContext(domain,
                 KnowledgeDomainRegistry.ResolveSubject(domainId, subjectId), pawn,
                 GetColonyKnowledgeExperience(domainId, subjectId), GetPawnKnowledgeExperience(domainId, subjectId, pawn),
@@ -371,8 +405,8 @@ namespace KnowledgeFramework
                 try { value = providers[i].Apply(effectId, context, value); }
                 catch (Exception exception)
                 {
-                    Log.ErrorOnce("[Knowledge Framework] Effect provider '" + providers[i].Id + "' failed: " + exception.Message,
-                        GenText.StableStringHash(domainId + "/" + providers[i].Id));
+                    KnowledgeLog.ErrorOnce("v1-effect:" + domainId + "/" + providers[i].Id,
+                        "Effect provider '" + providers[i].Id + "' failed.", exception);
                 }
             }
             return value;
@@ -380,8 +414,9 @@ namespace KnowledgeFramework
 
         public static void Reset(string domainId, string subjectId, Pawn pawn = null, bool colony = false, bool expertise = false)
         {
-            GameComponent_KnowledgeFramework.Current?.Reset(domainId, subjectId, pawn, colony, expertise);
-            KnowledgeProviderRegistry.Invalidate(pawn);
+            GameComponent_KnowledgeFramework.Current?.ResetV2(domainId, subjectId, pawn, colony, expertise);
+            if (colony || pawn == null) KnowledgeProviderRegistry.InvalidateAll();
+            else KnowledgeProviderRegistry.Invalidate(pawn);
         }
 
         public static IReadOnlyList<string> Validate()
@@ -411,6 +446,7 @@ namespace KnowledgeFramework
                             issues.Add("Orphaned pawn subject: " + domain.id + "/" + record.subjectId);
                 }
             }
+            issues.AddRange(KnowledgeValidation.ValidateAll().Select(issue => issue.ToString()));
             return issues.Distinct().ToList();
         }
 
@@ -436,6 +472,21 @@ namespace KnowledgeFramework
                     target[count.Key] = Mathf.Max(target.TryGetValue(count.Key, out int old) ? old : 0, count.Value);
         }
 
+        private static void InvokeKnowledgeChanged(KnowledgeChangedEvent value)
+        {
+            Action<KnowledgeChangedEvent> handlers = KnowledgeChanged;
+            if (handlers == null) return;
+            foreach (Action<KnowledgeChangedEvent> handler in handlers.GetInvocationList())
+            {
+                try { handler(value); }
+                catch (Exception exception)
+                {
+                    KnowledgeLog.ErrorOnce("v1-event:" + handler.Method.DeclaringType?.FullName + "." + handler.Method.Name,
+                        "A version-one change subscriber failed.", exception);
+                }
+            }
+        }
+
         private static void NotifyRankChanges(KnowledgeDomainDefinition domain, KnowledgeAward award,
             KnowledgeSnapshot oldPawn, KnowledgeSnapshot newPawn, ExpertiseSnapshot oldExpertise,
             ExpertiseSnapshot newExpertise)
@@ -443,11 +494,13 @@ namespace KnowledgeFramework
             if (award.pawn == null) return;
             KnowledgeSubjectDefinition subject = KnowledgeDomainRegistry.ResolveSubject(award.domainId, award.subjectId);
             if (oldPawn != null && newPawn.rank > oldPawn.rank)
-                Messages.Message(award.pawn.LabelShortCap + " advanced to " + newPawn.rank + " knowledge of "
-                    + (subject?.label ?? award.subjectId) + ".", award.pawn, MessageTypeDefOf.PositiveEvent, false);
+                Messages.Message("KnowledgeFramework_RankUpKnowledge".Translate(award.pawn.LabelShortCap,
+                    ("KnowledgeFramework_Rank_" + newPawn.rank).Translate(), subject?.label ?? award.subjectId),
+                    award.pawn, MessageTypeDefOf.PositiveEvent, false);
             if (domain.expertiseEnabled && oldExpertise != null && newExpertise.rank > oldExpertise.rank)
-                Messages.Message(award.pawn.LabelShortCap + " advanced to " + newExpertise.rank + " " + domain.label
-                    + " expertise.", award.pawn, MessageTypeDefOf.PositiveEvent, false);
+                Messages.Message("KnowledgeFramework_RankUpExpertise".Translate(award.pawn.LabelShortCap,
+                    ("KnowledgeFramework_Rank_" + newExpertise.rank).Translate(), domain.label), award.pawn,
+                    MessageTypeDefOf.PositiveEvent, false);
         }
     }
 
@@ -472,7 +525,7 @@ namespace KnowledgeFramework
         private static void InspectSelectedPawn()
         {
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn;
-            if (pawn == null) { Messages.Message("Select a pawn first.", MessageTypeDefOf.RejectInput, false); return; }
+            if (pawn == null) { Messages.Message("KnowledgeFramework_SelectPawn".Translate(), MessageTypeDefOf.RejectInput, false); return; }
             List<string> lines = new List<string>();
             foreach (KnowledgeDomainDefinition domain in KnowledgeDomainRegistry.AllDomains)
             {
@@ -490,7 +543,7 @@ namespace KnowledgeFramework
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn;
             KnowledgeDomainDefinition domain = KnowledgeDomainRegistry.AllDomains.FirstOrDefault();
             KnowledgeSubjectDefinition subject = domain == null ? null : KnowledgeDomainRegistry.Subjects(domain.id).FirstOrDefault();
-            if (pawn == null || subject == null) { Messages.Message("Select a pawn and register at least one subject.", MessageTypeDefOf.RejectInput, false); return; }
+            if (pawn == null || subject == null) { Messages.Message("KnowledgeFramework_SelectPawnAndSubject".Translate(), MessageTypeDefOf.RejectInput, false); return; }
             KnowledgeService.Award(new KnowledgeAward { domainId = domain.id, subjectId = subject.id, pawn = pawn,
                 pawnKnowledge = 100f, colonyKnowledge = 100f, expertise = domain.expertiseEnabled ? 100f : 0f,
                 reasonId = "debug", source = "KnowledgeFrameworkDebug" });
@@ -500,7 +553,7 @@ namespace KnowledgeFramework
         private static void ResetSelectedPawn()
         {
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn;
-            if (pawn == null) { Messages.Message("Select a pawn first.", MessageTypeDefOf.RejectInput, false); return; }
+            if (pawn == null) { Messages.Message("KnowledgeFramework_SelectPawn".Translate(), MessageTypeDefOf.RejectInput, false); return; }
             foreach (KnowledgeDomainDefinition domain in KnowledgeDomainRegistry.AllDomains)
             {
                 foreach (KnowledgeSnapshot record in KnowledgeService.PawnKnowledge(domain.id, pawn))

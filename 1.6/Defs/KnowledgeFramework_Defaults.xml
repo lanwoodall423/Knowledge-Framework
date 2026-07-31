@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Unknown</defName>
+    <label>unknown</label>
+    <description>No reliable information is available.</description>
+    <order>0</order>
+  </KnowledgeFramework.KnowledgeStageDef>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Rumored</defName>
+    <label>rumored</label>
+    <description>Unconfirmed information suggests this subject exists.</description>
+    <order>10</order>
+    <minimumKnowledge>1</minimumKnowledge>
+  </KnowledgeFramework.KnowledgeStageDef>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Encountered</defName>
+    <label>encountered</label>
+    <description>The subject has been directly encountered.</description>
+    <order>20</order>
+    <minimumKnowledge>5</minimumKnowledge>
+  </KnowledgeFramework.KnowledgeStageDef>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Identified</defName>
+    <label>identified</label>
+    <description>The subject can be identified reliably.</description>
+    <order>30</order>
+    <minimumKnowledge>20</minimumKnowledge>
+    <minimumConfidence>0.4</minimumConfidence>
+  </KnowledgeFramework.KnowledgeStageDef>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Understood</defName>
+    <label>understood</label>
+    <description>The subject is understood in useful detail.</description>
+    <order>40</order>
+    <minimumKnowledge>60</minimumKnowledge>
+    <minimumConfidence>0.6</minimumConfidence>
+  </KnowledgeFramework.KnowledgeStageDef>
+  <KnowledgeFramework.KnowledgeStageDef>
+    <defName>KF_Documented</defName>
+    <label>documented</label>
+    <description>The knowledge has been preserved in colony records.</description>
+    <order>50</order>
+    <minimumKnowledge>60</minimumKnowledge>
+    <minimumConfidence>0.6</minimumConfidence>
+    <documented>true</documented>
+  </KnowledgeFramework.KnowledgeStageDef>
+</Defs>

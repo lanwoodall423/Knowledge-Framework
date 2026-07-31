@@ -1,0 +1,42 @@
+// Documentation-only examples. This file is not compiled or loaded as runtime content.
+// It covers: implicit facet, faceted Def schema, generated subjects, observations,
+// reporting, reveals, typed effects, insights, relationships, and V1 migration.
+
+// 1. Minimal implicit-facet domain:
+KnowledgeRegistry.RegisterDomain(new KnowledgeDomainRegistration { id = "example.minimal", label = "Minimal" });
+
+// 2. Faceted static Def content is normally XML:
+// <KnowledgeFramework.KnowledgeDomainDef><defName>Example_Wildlife</defName>
+//   <facets><li>Example_Identity</li><li>Example_Habitat</li></facets></KnowledgeFramework.KnowledgeDomainDef>
+
+// 3. Dynamic subject:
+KnowledgeRegistry.RegisterSubject("example.minimal", new KnowledgeSubjectRegistration
+{
+    id = "generated-17", label = "Generated subject", source = "example"
+});
+
+// 4. Personal observation:
+KnowledgeEngine.Submit(new KnowledgeObservation { observer = pawn, domainId = "example.minimal",
+    subjectId = "generated-17", directKnowledge = 5f, reasonId = "study" });
+
+// 5. Report/document:
+KnowledgeTransmission.Report("example.minimal", "generated-17", pawn, "report");
+KnowledgeTransmission.Document("example.minimal", "generated-17", pawn, "journal");
+
+// 6. Configured reveal is a KnowledgeRevealDef; query it with:
+bool revealed = KnowledgeDiscovery.MeetsReveal("example.minimal", "generated-17", "Example_Reveal", pawn);
+
+// 7. Typed effect:
+KnowledgeEffectResult effect = KnowledgeEffects.Query(new KnowledgeEffectQuery {
+    domainId = "example.minimal", subjectId = "generated-17", channelId = "harvest-risk", pawn = pawn });
+
+// 8. Insight Def requirements can require multiple facet evidence counts and confidence.
+KnowledgeInsightProgress progress = KnowledgeInsightService.Progress("Example_Insight", "example.minimal",
+    "generated-17", pawn);
+
+// 9. Relationship transfer:
+KnowledgeFacetSnapshotV2 derived = KnowledgeQuery.Facet("example.minimal", "related", "default", pawn);
+
+// 10. V1 save migration:
+KnowledgeService.ImportMinimum("example.minimal", "generated-17", pawn, 12f, 4f, 8f,
+    new Dictionary<string, int> { ["study"] = 3 });

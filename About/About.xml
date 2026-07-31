@@ -8,5 +8,5 @@
     <li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl></li>
   </modDependencies>
   <loadAfter><li>brrainz.harmony</li></loadAfter>
-  <description>Shared four-rank knowledge API and pawn Bio panel for Lan's domain progression mods.</description>
+  <description>A general-purpose epistemic gameplay framework. Consumer mods turn observations into personal knowledge, confidence, discovery, expertise, familiarity, documented colony knowledge, insights, and informed decisions without tick polling.</description>
 </ModMetaData>

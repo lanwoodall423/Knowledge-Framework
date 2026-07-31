@@ -9,7 +9,9 @@ namespace KnowledgeFramework
 {
     public static class KnowledgeFrameworkApi
     {
-        public const int ApiVersion = 1;
+        public const int LegacyApiVersion = 1;
+        public const int ApiVersion = 2;
+        public const int SecondGenerationApiVersion = 2;
         public const string DomainsCapability = "domains";
         public const string ColonyKnowledgeCapability = "colony-knowledge";
         public const string PawnKnowledgeCapability = "pawn-knowledge";
@@ -17,13 +19,24 @@ namespace KnowledgeFramework
         public const string EffectsCapability = "effects";
         public const string RevealCapability = "reveals";
         public const string UiCapability = "domain-ui";
+        public const string EvidenceCapability = "evidence-transactions";
+        public const string FacetsCapability = "facets";
+        public const string ConfidenceCapability = "confidence";
+        public const string DiscoveryCapability = "discovery-stages";
+        public const string InsightsCapability = "insights";
+        public const string RelationshipsCapability = "relationships";
+        public const string TypedEffectsCapability = "typed-effects";
+        public const string TransmissionCapability = "transmission";
 
         public static bool Supports(int minimumApiVersion, string capability = null)
         {
             if (minimumApiVersion > ApiVersion) return false;
             return capability.NullOrEmpty() || capability == DomainsCapability || capability == ColonyKnowledgeCapability
                 || capability == PawnKnowledgeCapability || capability == ExpertiseCapability || capability == EffectsCapability
-                || capability == RevealCapability || capability == UiCapability;
+                || capability == RevealCapability || capability == UiCapability || capability == EvidenceCapability
+                || capability == FacetsCapability || capability == ConfidenceCapability || capability == DiscoveryCapability
+                || capability == InsightsCapability || capability == RelationshipsCapability || capability == TypedEffectsCapability
+                || capability == TransmissionCapability;
         }
     }
 
@@ -162,7 +175,8 @@ namespace KnowledgeFramework
             this.experience = experience;
             this.rank = rank;
             this.progress = progress;
-            this.eventCounts = new Dictionary<string, int>(eventCounts ?? new Dictionary<string, int>());
+            this.eventCounts = new System.Collections.ObjectModel.ReadOnlyDictionary<string, int>(
+                new Dictionary<string, int>(eventCounts ?? new Dictionary<string, int>()));
         }
 
         public int EventCount(string reasonId) => reasonId != null && eventCounts.TryGetValue(reasonId, out int count) ? count : 0;
@@ -241,7 +255,7 @@ namespace KnowledgeFramework
         private static int revision;
 
         public static int Revision => revision;
-        public static IReadOnlyList<string> RegistrationDiagnostics => Diagnostics;
+        public static IReadOnlyList<string> RegistrationDiagnostics => new System.Collections.ObjectModel.ReadOnlyCollection<string>(Diagnostics.ToList());
         public static IEnumerable<KnowledgeDomainDefinition> AllDomains => Domains.Values.OrderBy(value => value.sortOrder).ThenBy(value => value.id);
 
         public static bool RegisterDomain(KnowledgeDomainDefinition domain)
@@ -253,6 +267,40 @@ namespace KnowledgeFramework
             }
             if (Domains.ContainsKey(domain.id)) Diagnostics.Add("Duplicate domain registration replaced: " + domain.id);
             Domains[domain.id] = domain;
+            KnowledgeExpertiseTrackDef track = null;
+            if (domain.expertiseEnabled)
+            {
+                track = new KnowledgeExpertiseTrackDef
+                {
+                    defName = KnowledgeSchema.DefaultExpertiseTrackId,
+                    label = "Expertise",
+                    adept = domain.expertiseRanks.adept,
+                    expert = domain.expertiseRanks.expert,
+                    master = domain.expertiseRanks.master
+                };
+            }
+            bool v2Registered = KnowledgeRegistry.RegisterDomain(new KnowledgeDomainRegistration
+            {
+                id = domain.id,
+                label = domain.label,
+                description = domain.description,
+                sharingModel = KnowledgeSharingModel.Custom,
+                sortOrder = domain.sortOrder,
+                expertiseTracks = track == null ? Array.Empty<KnowledgeExpertiseTrackDef>() : new[] { track },
+                subjectResolver = subjectId =>
+                {
+                    KnowledgeSubjectDefinition subject = domain.subjectResolver?.Invoke(subjectId);
+                    return subject == null ? null : ToV2Subject(subject, domain.id);
+                },
+                subjectSource = () => (domain.subjectSource?.Invoke() ?? Enumerable.Empty<KnowledgeSubjectDefinition>())
+                    .Where(subject => subject != null).Select(subject => ToV2Subject(subject, domain.id)),
+                source = "v1:" + domain.id
+            }, new KnowledgeRegistrationOptions
+            {
+                source = "v1:" + domain.id,
+                conflict = KnowledgeRegistrationConflict.Replace
+            });
+            if (!v2Registered) Diagnostics.Add("Version-two schema registration failed: " + domain.id);
             InvalidateDomain(domain.id);
             return true;
         }
@@ -283,7 +331,18 @@ namespace KnowledgeFramework
                 providers[existing] = provider;
             }
             else providers.Add(provider);
+            providers.Sort((left, right) => string.CompareOrdinal(left.Id, right.Id));
             revision++;
+            return true;
+        }
+
+        public static bool UnregisterDomain(string domainId)
+        {
+            if (domainId.NullOrEmpty() || !Domains.Remove(domainId)) return false;
+            UiProviders.Remove(domainId);
+            EffectProviders.Remove(domainId);
+            KnowledgeRegistry.UnregisterDomain(domainId, "v1:" + domainId);
+            InvalidateDomain(domainId);
             return true;
         }
 
@@ -297,7 +356,9 @@ namespace KnowledgeFramework
             string key = domainId + "\n" + subjectId;
             if (SubjectCache.TryGetValue(key, out KnowledgeSubjectDefinition cached)) return cached;
             KnowledgeDomainDefinition domain = Domain(domainId);
-            KnowledgeSubjectDefinition resolved = domain?.subjectResolver?.Invoke(subjectId);
+            KnowledgeSubjectDefinition resolved = null;
+            try { resolved = domain?.subjectResolver?.Invoke(subjectId); }
+            catch (Exception exception) { KnowledgeLog.ErrorOnce("v1-subject-resolver:" + domainId, "Version-one subject resolver failed.", exception); }
             if (resolved != null) SubjectCache[key] = resolved;
             return resolved;
         }
@@ -305,8 +366,16 @@ namespace KnowledgeFramework
         public static IEnumerable<KnowledgeSubjectDefinition> Subjects(string domainId)
         {
             KnowledgeDomainDefinition domain = Domain(domainId);
-            return domain?.subjectSource?.Invoke()?.Where(subject => subject != null && !subject.id.NullOrEmpty())
-                .OrderBy(subject => subject.sortOrder).ThenBy(subject => subject.label) ?? Enumerable.Empty<KnowledgeSubjectDefinition>();
+            try
+            {
+                return domain?.subjectSource?.Invoke()?.Where(subject => subject != null && !subject.id.NullOrEmpty())
+                    .OrderBy(subject => subject.sortOrder).ThenBy(subject => subject.label).ToList() ?? Enumerable.Empty<KnowledgeSubjectDefinition>();
+            }
+            catch (Exception exception)
+            {
+                KnowledgeLog.ErrorOnce("v1-subject-source:" + domainId, "Version-one subject source failed.", exception);
+                return Enumerable.Empty<KnowledgeSubjectDefinition>();
+            }
         }
 
         public static void InvalidateDomain(string domainId)
@@ -319,6 +388,21 @@ namespace KnowledgeFramework
             }
             revision++;
             KnowledgeProviderRegistry.InvalidateAll();
+            KnowledgeRegistry.InvalidateSubjects(domainId);
+        }
+
+        private static KnowledgeSubjectRegistration ToV2Subject(KnowledgeSubjectDefinition subject, string domainId)
+        {
+            return new KnowledgeSubjectRegistration
+            {
+                id = subject.id,
+                label = subject.label,
+                description = subject.description,
+                sourceDef = subject.sourceDef,
+                iconPath = subject.iconPath,
+                sortOrder = subject.sortOrder,
+                source = "v1:" + domainId
+            };
         }
     }
 }

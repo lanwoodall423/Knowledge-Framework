@@ -57,7 +57,7 @@ namespace KnowledgeFramework
             Scribe_References.Look(ref pawn, "pawn");
             Scribe_Values.Look(ref subjectDefName, "subjectDefName");
             Scribe_Values.Look(ref experience, "experience");
-            experience = Mathf.Max(0f, experience);
+            experience = KnowledgeMath.NonNegativeFiniteOr(experience, 0f);
         }
     }
 
@@ -85,7 +85,7 @@ namespace KnowledgeFramework
         {
             public int cacheTick;
             public int revision;
-            public List<KnowledgeEntry> entries;
+            public IReadOnlyList<KnowledgeEntry> entries;
         }
 
         private static readonly Dictionary<string, Provider> Providers = new Dictionary<string, Provider>();
@@ -100,17 +100,30 @@ namespace KnowledgeFramework
             Cache.Clear();
         }
 
+        public static bool Unregister(string id)
+        {
+            if (id.NullOrEmpty() || !Providers.Remove(id)) return false;
+            revision++;
+            Cache.Clear();
+            return true;
+        }
+
         public static IReadOnlyList<KnowledgeEntry> EntriesFor(Pawn pawn)
         {
             if (pawn == null) return Array.Empty<KnowledgeEntry>();
             int now = Find.TickManager?.TicksGame ?? 0;
             int key = pawn.thingIDNumber;
-            if (Cache.TryGetValue(key, out PawnCache cached) && cached.revision == revision && now - cached.cacheTick < 60)
+            if (Cache.TryGetValue(key, out PawnCache cached) && cached.revision == revision && now >= cached.cacheTick && now - cached.cacheTick < 60)
+            {
+                KnowledgeDiagnostics.CacheHit();
                 return cached.entries;
+            }
+            KnowledgeDiagnostics.CacheMiss();
             List<KnowledgeEntry> entries = Providers.Values.OrderBy(provider => provider.order).ThenBy(provider => provider.id)
                 .Select(provider => SafeEntry(provider, pawn)).Where(entry => entry != null).ToList();
-            Cache[key] = new PawnCache { cacheTick = now, revision = revision, entries = entries };
-            return entries;
+            Cache[key] = new PawnCache { cacheTick = now, revision = revision,
+                entries = new System.Collections.ObjectModel.ReadOnlyCollection<KnowledgeEntry>(entries) };
+            return Cache[key].entries;
         }
 
         public static void Invalidate(Pawn pawn)
@@ -145,7 +158,9 @@ namespace KnowledgeFramework
     {
         static KnowledgeFrameworkStartup()
         {
-            new Harmony("lan.knowledgeframework").PatchAll(typeof(KnowledgeFrameworkStartup).Assembly);
+            try { new Harmony("lan.knowledgeframework").PatchAll(typeof(KnowledgeFrameworkStartup).Assembly); }
+            catch (Exception exception) { KnowledgeLog.ErrorOnce("startup:harmony", "Knowledge Framework Harmony patching failed.", exception); }
+            LongEventHandler.ExecuteWhenFinished(KnowledgeRegistry.BuildDefSchemas);
         }
     }
 
@@ -164,6 +179,8 @@ namespace KnowledgeFramework
 
         public static bool VisibleFor(Pawn pawn) => pawn?.Faction?.def?.isPlayer == true && pawn.RaceProps?.Humanlike == true &&
             KnowledgeProviderRegistry.EntriesFor(pawn).Count > 0;
+
+        internal static void ResetGameState() => expandedPawns.Clear();
 
         public static float HeightFor(Pawn pawn)
         {

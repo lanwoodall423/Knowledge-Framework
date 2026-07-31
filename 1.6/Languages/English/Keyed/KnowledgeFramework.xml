@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <KnowledgeFramework_Title>Knowledge &amp; Expertise</KnowledgeFramework_Title>
+  <KnowledgeFramework_Knowledge>Knowledge</KnowledgeFramework_Knowledge>
+  <KnowledgeFramework_Expertise>Expertise</KnowledgeFramework_Expertise>
+  <KnowledgeFramework_DefaultFacet>General</KnowledgeFramework_DefaultFacet>
+  <KnowledgeFramework_Colonist>Colonist</KnowledgeFramework_Colonist>
+  <KnowledgeFramework_Colonists>Colonists</KnowledgeFramework_Colonists>
+  <KnowledgeFramework_Colony>Colony</KnowledgeFramework_Colony>
+  <KnowledgeFramework_ColonyDescription>Shared knowledge available to the colony. Documentation is tracked separately.</KnowledgeFramework_ColonyDescription>
+  <KnowledgeFramework_Search>Search</KnowledgeFramework_Search>
+  <KnowledgeFramework_Unknown>Unknown</KnowledgeFramework_Unknown>
+  <KnowledgeFramework_Unidentified>Unidentified subject</KnowledgeFramework_Unidentified>
+  <KnowledgeFramework_Collapse>Collapse knowledge and expertise.</KnowledgeFramework_Collapse>
+  <KnowledgeFramework_Expand>Expand knowledge and expertise.</KnowledgeFramework_Expand>
+  <KnowledgeFramework_MoreDomains>{0} more knowledge domains...</KnowledgeFramework_MoreDomains>
+  <KnowledgeFramework_KnownFacetCount>{0} known facets</KnowledgeFramework_KnownFacetCount>
+  <KnowledgeFramework_NoColonist>No colonist is available.</KnowledgeFramework_NoColonist>
+  <KnowledgeFramework_NoColonyKnowledge>No colony knowledge is available.</KnowledgeFramework_NoColonyKnowledge>
+  <KnowledgeFramework_NoPersonalKnowledge>No colonist knowledge is available.</KnowledgeFramework_NoPersonalKnowledge>
+  <KnowledgeFramework_NoCategories>No knowledge categories are available.</KnowledgeFramework_NoCategories>
+  <KnowledgeFramework_NoMatches>No matching knowledge records.</KnowledgeFramework_NoMatches>
+  <KnowledgeFramework_NoDomains>No knowledge domains are registered.</KnowledgeFramework_NoDomains>
+  <KnowledgeFramework_SelectSubject>Select a subject to inspect its knowledge facets.</KnowledgeFramework_SelectSubject>
+  <KnowledgeFramework_SelectPawn>Select a pawn first.</KnowledgeFramework_SelectPawn>
+  <KnowledgeFramework_StageValue>Discovery: {0}</KnowledgeFramework_StageValue>
+  <KnowledgeFramework_KnowledgePercent>Knowledge {0}</KnowledgeFramework_KnowledgePercent>
+  <KnowledgeFramework_KnowledgeAndConfidence>Knowledge {0}   Confidence {1}</KnowledgeFramework_KnowledgeAndConfidence>
+  <KnowledgeFramework_ProvisionalKnowledge>This is a provisional assumption derived from related knowledge.</KnowledgeFramework_ProvisionalKnowledge>
+  <KnowledgeFramework_ExpertiseMaster>{0} - Master</KnowledgeFramework_ExpertiseMaster>
+  <KnowledgeFramework_ExpertiseToward>{0} toward {1}</KnowledgeFramework_ExpertiseToward>
+  <KnowledgeFramework_Rank_Novice>Novice</KnowledgeFramework_Rank_Novice>
+  <KnowledgeFramework_Rank_Adept>Adept</KnowledgeFramework_Rank_Adept>
+  <KnowledgeFramework_Rank_Expert>Expert</KnowledgeFramework_Rank_Expert>
+  <KnowledgeFramework_Rank_Master>Master</KnowledgeFramework_Rank_Master>
+  <KnowledgeFramework_RankUpKnowledge>{0} advanced to {1} knowledge of {2}.</KnowledgeFramework_RankUpKnowledge>
+  <KnowledgeFramework_RankUpExpertise>{0} advanced to {1} {2} expertise.</KnowledgeFramework_RankUpExpertise>
+  <KnowledgeFramework_SelectPawnAndSubject>Select a pawn and register at least one subject.</KnowledgeFramework_SelectPawnAndSubject>
+  <KnowledgeFramework_VerificationPassed>Knowledge framework verification passed.</KnowledgeFramework_VerificationPassed>
+  <KnowledgeFramework_VerificationFailed>Knowledge framework verification failed; inspect the log.</KnowledgeFramework_VerificationFailed>
+  <KnowledgeFramework_Actions>Actions</KnowledgeFramework_Actions>
+  <KnowledgeFramework_Relationships>Related knowledge</KnowledgeFramework_Relationships>
+  <KnowledgeFramework_RelationshipValue>From {0}: {1} knowledge, {2} confidence</KnowledgeFramework_RelationshipValue>
+  <KnowledgeFramework_Insights>Insights</KnowledgeFramework_Insights>
+  <KnowledgeFramework_InsightReady>{0}: ready</KnowledgeFramework_InsightReady>
+  <KnowledgeFramework_InsightProgress>{0}: {1} requirements unmet</KnowledgeFramework_InsightProgress>
+</LanguageData>
