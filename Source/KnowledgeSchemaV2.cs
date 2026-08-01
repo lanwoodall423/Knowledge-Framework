@@ -22,6 +22,7 @@ namespace KnowledgeFramework
         public readonly float revealKnowledge;
         public readonly float revealConfidence;
         public readonly IReadOnlyList<string> relatedFacetIds;
+        public readonly IReadOnlyList<string> claimIds;
 
         internal KnowledgeFacetSchema(KnowledgeFacetDef def)
         {
@@ -38,6 +39,7 @@ namespace KnowledgeFramework
             revealKnowledge = KnowledgeMath.NonNegativeFiniteOr(def.revealKnowledge, 0f);
             revealConfidence = KnowledgeMath.Clamp01Finite(def.revealConfidence);
             relatedFacetIds = ReadOnly(def.relatedFacetIds);
+            claimIds = ReadOnly(def.claimIds);
         }
 
         internal KnowledgeFacetSchema()
@@ -51,6 +53,7 @@ namespace KnowledgeFramework
             shareable = true;
             approximateWhenUncertain = true;
             relatedFacetIds = Array.Empty<string>();
+            claimIds = Array.Empty<string>();
         }
 
         private static IReadOnlyList<string> ReadOnly(IEnumerable<string> values) =>
@@ -66,6 +69,9 @@ namespace KnowledgeFramework
         public readonly float minimumKnowledge;
         public readonly float minimumConfidence;
         public readonly bool documented;
+        public readonly KnowledgeRequirementGroup requirementGroup;
+        public readonly bool allowRegression;
+        public readonly bool contextSensitive;
 
         internal KnowledgeStageSchema(KnowledgeStageDef def)
         {
@@ -76,6 +82,9 @@ namespace KnowledgeFramework
             minimumKnowledge = KnowledgeMath.NonNegativeFiniteOr(def.minimumKnowledge, 0f);
             minimumConfidence = KnowledgeMath.Clamp01Finite(def.minimumConfidence);
             documented = def.documented;
+            requirementGroup = def.requirementGroup;
+            allowRegression = def.allowRegression;
+            contextSensitive = def.contextSensitive;
         }
     }
 
@@ -111,6 +120,10 @@ namespace KnowledgeFramework
         public readonly IReadOnlyList<string> categoryIds;
         public readonly int sortOrder;
         public readonly bool dynamic;
+        public readonly string archetypeId;
+        public readonly IReadOnlyList<string> applicableFacetIds;
+        public readonly IReadOnlyList<string> applicableClaimIds;
+        public readonly KnowledgeSubjectState state;
 
         internal KnowledgeSubjectSnapshot(string domainId, KnowledgeSubjectDef def)
         {
@@ -127,6 +140,10 @@ namespace KnowledgeFramework
             templateConfidenceCoefficient = KnowledgeMath.Clamp01Finite(def.templateConfidenceCoefficient);
             categoryIds = ReadOnly(def.categoryIds);
             sortOrder = def.sortOrder;
+            archetypeId = def.archetypeId;
+            applicableFacetIds = ReadOnly(def.applicableFacetIds);
+            applicableClaimIds = ReadOnly(def.applicableClaimIds);
+            state = def.state;
         }
 
         internal KnowledgeSubjectSnapshot(string domainId, KnowledgeSubjectRegistration value)
@@ -145,6 +162,10 @@ namespace KnowledgeFramework
             categoryIds = ReadOnly(value.categoryIds);
             sortOrder = value.sortOrder;
             dynamic = true;
+            archetypeId = value.archetypeId;
+            applicableFacetIds = ReadOnly(value.applicableFacetIds);
+            applicableClaimIds = ReadOnly(value.applicableClaimIds);
+            state = value.state;
         }
 
         private static IReadOnlyList<string> ReadOnly(IEnumerable<string> values) =>
@@ -177,11 +198,17 @@ namespace KnowledgeFramework
         public readonly IReadOnlyList<KnowledgeInsightDef> insights;
         public readonly IReadOnlyList<KnowledgeRelationshipDef> relationships;
         public readonly KnowledgeTransmissionDef transmission;
+        public readonly IReadOnlyList<KnowledgeClaimDef> claims;
+        public readonly IReadOnlyList<KnowledgeSubjectArchetypeDef> archetypes;
+        public readonly IReadOnlyList<KnowledgeMilestoneTrackDef> milestoneTracks;
+        public readonly IReadOnlyList<KnowledgeExpertiseNamespaceDef> expertiseNamespaces;
 
         private readonly Dictionary<string, KnowledgeFacetSchema> facetsById;
         private readonly Dictionary<string, KnowledgeStageSchema> stagesById;
         private readonly Dictionary<string, KnowledgeExpertiseTrackSchema> tracksById;
         private readonly Dictionary<string, KnowledgeObservationDef> observationsById;
+        private readonly Dictionary<string, KnowledgeClaimDef> claimsById;
+        private readonly Dictionary<string, KnowledgeSubjectArchetypeDef> archetypesById;
         private readonly Func<string, KnowledgeSubjectRegistration> dynamicResolver;
         private readonly Func<IEnumerable<KnowledgeSubjectRegistration>> dynamicSource;
 
@@ -209,6 +236,10 @@ namespace KnowledgeFramework
             insights = ReadOnly(value.insights);
             relationships = ReadOnly(value.relationships);
             transmission = value.transmission;
+            claims = ReadOnly(value.claims);
+            archetypes = ReadOnly(value.archetypes);
+            milestoneTracks = ReadOnly(value.milestoneTracks);
+            expertiseNamespaces = ReadOnly(value.expertiseNamespaces);
             dynamicResolver = value.subjectResolver;
             dynamicSource = value.subjectSource;
             facetsById = facets.Where(item => !item.id.NullOrEmpty()).GroupBy(item => item.id)
@@ -218,6 +249,12 @@ namespace KnowledgeFramework
             tracksById = expertiseTracks.Where(item => !item.id.NullOrEmpty()).GroupBy(item => item.id)
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
             observationsById = observations.Where(item => item != null).GroupBy(item => item.StableId)
+                .Where(group => !group.Key.NullOrEmpty())
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            claimsById = claims.Where(item => item != null).GroupBy(item => item.StableId)
+                .Where(group => !group.Key.NullOrEmpty())
+                .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
+            archetypesById = archetypes.Where(item => item != null).GroupBy(item => item.StableId)
                 .Where(group => !group.Key.NullOrEmpty())
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         }
@@ -244,6 +281,10 @@ namespace KnowledgeFramework
                 insights = def.insights,
                 relationships = def.relationships,
                 transmission = def.transmission,
+                claims = def.claims,
+                archetypes = def.archetypes,
+                milestoneTracks = def.milestoneTracks,
+                expertiseNamespaces = def.expertiseNamespaces,
                 source = def.modContentPack?.PackageId ?? "Defs"
             }, 0, def.modContentPack?.PackageId ?? "Defs");
         }
@@ -265,6 +306,12 @@ namespace KnowledgeFramework
 
         public KnowledgeObservationDef Observation(string observationId) =>
             !observationId.NullOrEmpty() && observationsById.TryGetValue(observationId, out KnowledgeObservationDef value) ? value : null;
+
+        public KnowledgeClaimDef Claim(string claimId) =>
+            !claimId.NullOrEmpty() && claimsById.TryGetValue(claimId, out KnowledgeClaimDef value) ? value : null;
+
+        public KnowledgeSubjectArchetypeDef Archetype(string archetypeId) =>
+            !archetypeId.NullOrEmpty() && archetypesById.TryGetValue(archetypeId, out KnowledgeSubjectArchetypeDef value) ? value : null;
 
         internal KnowledgeSubjectRegistration ResolveDynamic(string subjectId) => dynamicResolver?.Invoke(subjectId);
         internal IEnumerable<KnowledgeSubjectRegistration> DynamicSubjects() => dynamicSource?.Invoke() ?? Enumerable.Empty<KnowledgeSubjectRegistration>();

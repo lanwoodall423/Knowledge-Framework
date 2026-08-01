@@ -263,7 +263,7 @@ namespace KnowledgeFramework
 
     public sealed partial class GameComponent_KnowledgeFramework
     {
-        internal const int CurrentSchemaVersion = 2;
+        internal const int CurrentSchemaVersion = 3;
         private int knowledgeFrameworkSchemaVersion;
         private int globalRevision;
         private List<PersonalSubjectStateRecord> personalSubjectsV2 = new List<PersonalSubjectStateRecord>();
@@ -457,6 +457,7 @@ namespace KnowledgeFramework
             count += expertiseV2.Count(item => item == null || item.pawn == null || KnowledgeRegistry.Schema(item.domainId) == null);
             count += pawnKnowledge.Count(item => item == null || item.pawn == null || KnowledgeRegistry.Schema(item.domainId) == null || KnowledgeRegistry.ResolveSubject(item.domainId, item.subjectId) == null);
             count += colonyKnowledge.Count(item => item == null || KnowledgeRegistry.Schema(item.domainId) == null || KnowledgeRegistry.ResolveSubject(item.domainId, item.subjectId) == null);
+            count += V3OrphanCount;
             return count;
         }
 
@@ -464,7 +465,8 @@ namespace KnowledgeFramework
             (personalSubjectsV2.Count + colonySubjectsV2.Count) * 128L +
             (personalFacetsV2.Count + colonyFacetsV2.Count) * 256L + expertiseV2.Count * 80L + insightsV2.Count * 96L +
             personalFacetsV2.Sum(item => (long)(item.eventCounts.Count * 48 + item.aggregates.Count * 80 + item.provenance.Count * 96)) +
-            colonyFacetsV2.Sum(item => (long)(item.eventCounts.Count * 48 + item.aggregates.Count * 80 + item.provenance.Count * 96));
+            colonyFacetsV2.Sum(item => (long)(item.eventCounts.Count * 48 + item.aggregates.Count * 80 + item.provenance.Count * 96)) +
+            ApproximateV3PersistentBytes();
 
         internal void RefreshDiagnosticsV2() => KnowledgeDiagnostics.UpdateRecordCounts(
             personalFacetsV2.Count, colonyFacetsV2.Count, expertiseV2.Count, OrphanCount());
@@ -546,6 +548,7 @@ namespace KnowledgeFramework
             expertiseV2.RemoveAll(item => item?.domainId == domainId);
             insightsV2.RemoveAll(item => item?.domainId == domainId);
             RebuildV2Indexes();
+            RemoveDomainDataV3(domainId);
         }
 
         internal int ForgetPawnDataV2(Pawn pawn, string domainId)

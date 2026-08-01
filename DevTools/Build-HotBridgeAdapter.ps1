@@ -21,9 +21,9 @@ $text = [IO.File]::ReadAllText($source)
 $specs = @([regex]::Matches($text, '"(?<spec>[A-Z][A-Z0-9_]*\|[RW]\|[^"\r\n]+)"') |
     ForEach-Object { $_.Groups['spec'].Value })
 & $publisher -AssemblyPath $built -Destination $destination -AdapterId 'KnowledgeFramework' `
-    -DisplayName 'Knowledge Framework' -Version '2.0.0' -Generation $stamp `
+    -DisplayName 'Knowledge Framework' -Version '3.0.0' -Generation $stamp `
     -ProviderType 'KnowledgeFrameworkBridgeAdapter.KnowledgeFrameworkBridgeAdapter' -CommandSpecs $specs `
     -RequiredPackageIds @('lan.knowledgeframework') -NoMapCommands @('KF_V2_VALIDATE') `
     -TemporaryCommands @('KF_V2_VERIFY') -ExpensiveCommands @('KF_V2_VERIFY') -SimulationCommands @('KF_V2_VERIFY') `
-    -ChangeSummary 'Bounded Knowledge Framework V2 runtime verification.'
+    -ChangeSummary 'Bounded Knowledge Framework V2/V3 runtime verification.'
 if ($LASTEXITCODE -ne 0) { throw "Knowledge Framework hot adapter publication failed with exit code $LASTEXITCODE." }

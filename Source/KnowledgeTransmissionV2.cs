@@ -28,6 +28,19 @@ namespace KnowledgeFramework
         public float confidenceEfficiency = 0.8f;
         public string source;
         public bool document;
+        public IReadOnlyList<string> facetIds;
+        public IReadOnlyList<string> claimIds;
+        public IReadOnlyList<KnowledgeEvidenceDisposition> evidenceDispositions;
+        public KnowledgeContextKey context;
+        public string contextTypeId;
+        public string contextId;
+        public string maximumStageId;
+        public float maximumConfidence = 1f;
+        public bool includeProvisional = true;
+        public bool includeContradictory = true;
+        public bool includeProvenance = true;
+        public bool includeMilestones;
+        public bool documentedOnly;
     }
 
     public static class KnowledgeTransmission
@@ -105,42 +118,43 @@ namespace KnowledgeFramework
             {
                 case KnowledgeTransmissionKind.Report:
                     if (schema.sharingModel != KnowledgeSharingModel.Reportable && schema.sharingModel != KnowledgeSharingModel.Custom) return false;
-                    return CopyPersonalToColony(component, schema, subjectId, request.sourcePawn, knowledgeEfficiency,
+                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, false, request.source);
                 case KnowledgeTransmissionKind.Document:
                     if (schema.sharingModel == KnowledgeSharingModel.Custom && !request.document) return false;
-                    return CopyPersonalToColony(component, schema, subjectId, request.sourcePawn, knowledgeEfficiency,
+                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, true, request.source);
                 case KnowledgeTransmissionKind.Teach:
                 case KnowledgeTransmissionKind.Conversation:
-                    return CopyPersonalToPersonal(component, schema, subjectId, request.sourcePawn, request.recipientPawn,
-                        knowledgeEfficiency, confidenceEfficiency, request.source);
+                    return CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                        confidenceEfficiency, request.source);
                 case KnowledgeTransmissionKind.Read:
                 case KnowledgeTransmissionKind.ConsultArchive:
-                    return CopyColonyToPersonal(component, schema, subjectId, request.recipientPawn,
-                        knowledgeEfficiency, confidenceEfficiency, request.source);
+                    return CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                        confidenceEfficiency, request.source);
                 case KnowledgeTransmissionKind.RecruitKnowledge:
-                    return CopyPersonalToColony(component, schema, subjectId, request.sourcePawn, knowledgeEfficiency,
+                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, request.document, request.source);
                 case KnowledgeTransmissionKind.Custom:
                     if (request.sourcePawn != null && request.recipientPawn != null)
-                        return CopyPersonalToPersonal(component, schema, subjectId, request.sourcePawn, request.recipientPawn,
-                            knowledgeEfficiency, confidenceEfficiency, request.source);
+                        return CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                            confidenceEfficiency, request.source);
                     if (request.sourcePawn != null)
-                        return CopyPersonalToColony(component, schema, subjectId, request.sourcePawn, knowledgeEfficiency,
+                        return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                             confidenceEfficiency, request.document, request.source);
-                    return CopyColonyToPersonal(component, schema, subjectId, request.recipientPawn,
-                        knowledgeEfficiency, confidenceEfficiency, request.source);
+                    return CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                        confidenceEfficiency, request.source);
                 default: return false;
             }
         }
 
         private static bool CopyPersonalToColony(GameComponent_KnowledgeFramework component, KnowledgeSchema schema,
-            string subjectId, Pawn pawn, float knowledgeEfficiency, float confidenceEfficiency, bool document, string source)
+            string subjectId, KnowledgeTransmissionRequest request, float knowledgeEfficiency, float confidenceEfficiency, bool document, string source)
         {
+            Pawn pawn = request.sourcePawn;
             if (pawn == null) return false;
             bool changed = false;
-            foreach (KnowledgeFacetSchema facetSchema in schema.facets.Where(item => item.shareable && (!document || item.documentable)))
+            foreach (KnowledgeFacetSchema facetSchema in FilterFacets(schema, request, document))
             {
                 PersonalFacetStateRecord from = component.PersonalFacetV2(schema.id, subjectId, facetSchema.id, pawn, false);
                 if (from == null) continue;
@@ -148,6 +162,7 @@ namespace KnowledgeFramework
                 ColonySubjectStateRecord subject = component.ColonySubjectV2(schema.id, subjectId, true);
                 bool facetChanged = CopyMinimum(from, to, knowledgeEfficiency, confidenceEfficiency);
                 changed |= facetChanged;
+                changed |= CopyClaims(component, schema, subjectId, request, pawn, null, facetSchema.id, knowledgeEfficiency, confidenceEfficiency, document);
                 bool documentationChanged = document && (!subject.documented || subject.documentationSource != (source ?? pawn.ThingID));
                 changed |= documentationChanged;
                 if (document)
@@ -171,11 +186,13 @@ namespace KnowledgeFramework
         }
 
         private static bool CopyPersonalToPersonal(GameComponent_KnowledgeFramework component, KnowledgeSchema schema,
-            string subjectId, Pawn sourcePawn, Pawn recipientPawn, float knowledgeEfficiency, float confidenceEfficiency, string source)
+            string subjectId, KnowledgeTransmissionRequest request, float knowledgeEfficiency, float confidenceEfficiency, string source)
         {
+            Pawn sourcePawn = request.sourcePawn;
+            Pawn recipientPawn = request.recipientPawn;
             if (sourcePawn == null || recipientPawn == null || sourcePawn == recipientPawn) return false;
             bool changed = false;
-            foreach (KnowledgeFacetSchema facetSchema in schema.facets.Where(item => item.personallyKnowable && item.shareable))
+            foreach (KnowledgeFacetSchema facetSchema in FilterFacets(schema, request, false).Where(item => item.personallyKnowable))
             {
                 PersonalFacetStateRecord from = component.PersonalFacetV2(schema.id, subjectId, facetSchema.id, sourcePawn, false);
                 if (from == null) continue;
@@ -187,6 +204,7 @@ namespace KnowledgeFramework
                     component.Touch(subject, to);
                     changed = true;
                 }
+                changed |= CopyClaims(component, schema, subjectId, request, sourcePawn, recipientPawn, facetSchema.id, knowledgeEfficiency, confidenceEfficiency, false);
             }
             if (changed)
             {
@@ -198,13 +216,14 @@ namespace KnowledgeFramework
         }
 
         private static bool CopyColonyToPersonal(GameComponent_KnowledgeFramework component, KnowledgeSchema schema,
-            string subjectId, Pawn pawn, float knowledgeEfficiency, float confidenceEfficiency, string source)
+            string subjectId, KnowledgeTransmissionRequest request, float knowledgeEfficiency, float confidenceEfficiency, string source)
         {
+            Pawn pawn = request.recipientPawn;
             if (pawn == null) return false;
             ColonySubjectStateRecord archive = component.ColonySubjectV2(schema.id, subjectId, false);
             if (schema.sharingModel == KnowledgeSharingModel.Documented && archive?.documented != true) return false;
             bool changed = false;
-            foreach (KnowledgeFacetSchema facetSchema in schema.facets.Where(item => item.personallyKnowable))
+            foreach (KnowledgeFacetSchema facetSchema in FilterFacets(schema, request, false).Where(item => item.personallyKnowable))
             {
                 ColonyFacetStateRecord from = component.ColonyFacetV2(schema.id, subjectId, facetSchema.id, false);
                 if (from == null) continue;
@@ -216,6 +235,7 @@ namespace KnowledgeFramework
                     component.Touch(subject, to);
                     changed = true;
                 }
+                changed |= CopyClaims(component, schema, subjectId, request, null, pawn, facetSchema.id, knowledgeEfficiency, confidenceEfficiency, false);
             }
             if (changed)
             {
@@ -242,6 +262,72 @@ namespace KnowledgeFramework
             foreach (KeyValuePair<string, int> pair in from.eventCounts)
                 to.eventCounts[pair.Key] = Math.Max(to.eventCounts.TryGetValue(pair.Key, out int old) ? old : 0,
                     (int)(pair.Value * confidenceEfficiency));
+            return changed;
+        }
+
+        private static IEnumerable<KnowledgeFacetSchema> FilterFacets(KnowledgeSchema schema, KnowledgeTransmissionRequest request, bool document)
+        {
+            IEnumerable<KnowledgeFacetSchema> result = schema.facets.Where(item => item.shareable && (!document || item.documentable));
+            if (request.facetIds != null && request.facetIds.Count > 0) result = result.Where(item => request.facetIds.Contains(item.id));
+            return result;
+        }
+
+        private static bool CopyClaims(GameComponent_KnowledgeFramework component, KnowledgeSchema schema, string subjectId,
+            KnowledgeTransmissionRequest request, Pawn sourcePawn, Pawn recipientPawn, string facetId, float knowledgeEfficiency,
+            float confidenceEfficiency, bool document)
+        {
+            bool changed = false;
+            bool targetColony = recipientPawn == null;
+            if (!request.maximumStageId.NullOrEmpty())
+            {
+                KnowledgeSchema stageSchema = KnowledgeRegistry.Schema(schema.id);
+                KnowledgeStageSchema actualStage = stageSchema?.Stage(KnowledgeQuery.Subject(schema.id, subjectId, sourcePawn,
+                    sourcePawn == null ? KnowledgeScope.Colony : KnowledgeScope.Personal).stageId);
+                KnowledgeStageSchema maximumStage = stageSchema?.Stage(request.maximumStageId);
+                if (actualStage != null && maximumStage != null && actualStage.order > maximumStage.order) return false;
+            }
+            IEnumerable<KnowledgeClaimStateRecord> records = component.ClaimRecordsV3(schema.id, subjectId, sourcePawn, sourcePawn == null)
+                .Where(item => item.facetId == facetId && item.colony == (sourcePawn == null));
+            if (sourcePawn != null) records = records.Where(item => !item.colony && item.pawn == sourcePawn);
+            else records = records.Where(item => item.colony);
+            KnowledgeContextKey requestedContext = request.context.IsEmpty && !request.contextTypeId.NullOrEmpty() && !request.contextId.NullOrEmpty()
+                ? new KnowledgeContextKey(request.contextTypeId, request.contextId) : request.context;
+            if (!requestedContext.IsEmpty) records = records.Where(item => item.contextTypeId == requestedContext.typeId && item.contextId == requestedContext.stableId);
+            foreach (KnowledgeClaimStateRecord record in records.ToList())
+            {
+                KnowledgeClaimDef claim = schema.Claim(record.claimId);
+                if (claim == null || request.claimIds != null && request.claimIds.Count > 0 && !request.claimIds.Contains(claim.StableId)) continue;
+                KnowledgeClaimSnapshot sourceSnapshot = KnowledgeClaimService.Snapshot(schema.id, subjectId, facetId, claim.StableId,
+                    sourcePawn, sourcePawn == null ? KnowledgeScope.Colony : KnowledgeScope.Personal,
+                    new KnowledgeContextKey(record.contextTypeId, record.contextId));
+                if (!request.includeProvisional && sourceSnapshot.provisional || sourceSnapshot.effectiveConfidence > request.maximumConfidence) continue;
+                if (request.documentedOnly && !sourceSnapshot.documented) continue;
+                KnowledgeClaimStateRecord target = component.ClaimV3(schema.id, subjectId, facetId, claim.StableId, targetColony ? null : recipientPawn,
+                    targetColony, requestedContext.IsEmpty ? new KnowledgeContextKey(record.contextTypeId, record.contextId) : requestedContext, true);
+                foreach (KnowledgeMeasurementRecord item in record.measurements)
+                {
+                    if (!request.includeProvenance && !item.summary.NullOrEmpty()) continue;
+                    if (request.evidenceDispositions != null && request.evidenceDispositions.Count > 0 && !request.evidenceDispositions.Contains((KnowledgeEvidenceDisposition)item.disposition)) continue;
+                    KnowledgeMeasurement measurement = item.ToMeasurement();
+                    measurement.observer = targetColony ? null : recipientPawn;
+                    measurement.scope = targetColony ? KnowledgeScope.Colony : KnowledgeScope.Personal;
+                    measurement.quality *= confidenceEfficiency;
+                    measurement.evidenceWeight *= confidenceEfficiency;
+                    measurement.documented |= document;
+                    if (!request.includeContradictory && measurement.disposition == KnowledgeEvidenceDisposition.Contradictory) continue;
+                    KnowledgeClaimService.Apply(component, measurement, new KnowledgeObservation
+                    {
+                        domainId = schema.id,
+                        subjectId = subjectId,
+                        facetId = facetId,
+                        observer = recipientPawn,
+                        targetColony = targetColony,
+                        source = request.source
+                    });
+                    changed = true;
+                }
+                if (document) changed = true;
+            }
             return changed;
         }
     }

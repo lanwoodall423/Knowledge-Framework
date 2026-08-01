@@ -10,8 +10,10 @@ namespace KnowledgeFramework
     public static class KnowledgeFrameworkApi
     {
         public const int LegacyApiVersion = 1;
-        public const int ApiVersion = 2;
+        public const int V2ApiVersion = 2;
+        public const int ApiVersion = 3;
         public const int SecondGenerationApiVersion = 2;
+        public const int ThirdGenerationApiVersion = 3;
         public const string DomainsCapability = "domains";
         public const string ColonyKnowledgeCapability = "colony-knowledge";
         public const string PawnKnowledgeCapability = "pawn-knowledge";
@@ -27,6 +29,23 @@ namespace KnowledgeFramework
         public const string RelationshipsCapability = "relationships";
         public const string TypedEffectsCapability = "typed-effects";
         public const string TransmissionCapability = "transmission";
+        public const string ClaimsCapability = "claims";
+        public const string TypedMeasurementsCapability = "typed-measurements";
+        public const string ArchetypesCapability = "subject-archetypes";
+        public const string RequirementStagesCapability = "requirement-stages";
+        public const string ObservationRecipesCapability = "observation-recipes";
+        public const string ContextsCapability = "contextual-knowledge";
+        public const string MilestonesCapability = "milestones";
+        public const string StructuralRelationsCapability = "structural-relations";
+        public const string SubjectLifecycleCapability = "subject-lifecycle";
+        public const string AccrualPoliciesCapability = "accrual-policies";
+        public const string StalenessCapability = "claim-staleness";
+        public const string FilteredTransmissionCapability = "filtered-transmission";
+        public const string WitnessLearningCapability = "witness-learning";
+        public const string RichEffectRequirementsCapability = "rich-effect-requirements";
+        public const string CrossDomainCapability = "cross-domain-requirements";
+        public const string SharedExpertiseCapability = "shared-expertise";
+        public const string StructuredComparisonCapability = "structured-comparison";
 
         public static bool Supports(int minimumApiVersion, string capability = null)
         {
@@ -36,7 +55,40 @@ namespace KnowledgeFramework
                 || capability == RevealCapability || capability == UiCapability || capability == EvidenceCapability
                 || capability == FacetsCapability || capability == ConfidenceCapability || capability == DiscoveryCapability
                 || capability == InsightsCapability || capability == RelationshipsCapability || capability == TypedEffectsCapability
-                || capability == TransmissionCapability;
+                || capability == TransmissionCapability || capability == ClaimsCapability || capability == TypedMeasurementsCapability
+                || capability == ArchetypesCapability || capability == RequirementStagesCapability || capability == ObservationRecipesCapability
+                || capability == ContextsCapability || capability == MilestonesCapability || capability == StructuralRelationsCapability
+                || capability == SubjectLifecycleCapability || capability == AccrualPoliciesCapability || capability == StalenessCapability
+                || capability == FilteredTransmissionCapability || capability == WitnessLearningCapability || capability == RichEffectRequirementsCapability
+                || capability == CrossDomainCapability || capability == SharedExpertiseCapability || capability == StructuredComparisonCapability;
+        }
+
+        public static int CapabilityVersion(string capability)
+        {
+            if (capability.NullOrEmpty()) return ApiVersion;
+            switch (capability)
+            {
+                case ClaimsCapability:
+                case TypedMeasurementsCapability:
+                case ArchetypesCapability:
+                case RequirementStagesCapability:
+                case ObservationRecipesCapability:
+                case ContextsCapability:
+                case MilestonesCapability:
+                case StructuralRelationsCapability:
+                case SubjectLifecycleCapability:
+                case AccrualPoliciesCapability:
+                case StalenessCapability:
+                case FilteredTransmissionCapability:
+                case WitnessLearningCapability:
+                case RichEffectRequirementsCapability:
+                case CrossDomainCapability:
+                case SharedExpertiseCapability:
+                case StructuredComparisonCapability:
+                    return ThirdGenerationApiVersion;
+                default:
+                    return SecondGenerationApiVersion;
+            }
         }
     }
 

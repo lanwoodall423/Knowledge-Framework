@@ -70,8 +70,8 @@ namespace KnowledgeFramework
 
         public static GameComponent_KnowledgeFramework Current => Verse.Current.Game?.GetComponent<GameComponent_KnowledgeFramework>();
 
-        public GameComponent_KnowledgeFramework() { RebuildIndexes(); InitializeV2(); KnowledgeRegistry.ResetGameCaches(); }
-        public GameComponent_KnowledgeFramework(Game game) { RebuildIndexes(); InitializeV2(); KnowledgeRegistry.ResetGameCaches(); }
+        public GameComponent_KnowledgeFramework() { RebuildIndexes(); InitializeV2(); InitializeV3(); KnowledgeRegistry.ResetGameCaches(); }
+        public GameComponent_KnowledgeFramework(Game game) { RebuildIndexes(); InitializeV2(); InitializeV3(); KnowledgeRegistry.ResetGameCaches(); }
 
         public override void ExposeData()
         {
@@ -80,6 +80,7 @@ namespace KnowledgeFramework
             Scribe_Collections.Look(ref pawnKnowledge, "knowledgeFrameworkPawns", LookMode.Deep);
             Scribe_Collections.Look(ref pawnExpertise, "knowledgeFrameworkExpertise", LookMode.Deep);
             ExposeV2Data();
+            ExposeV3Data();
             if (Scribe.mode == LoadSaveMode.PostLoadInit)
             {
                 if (colonyKnowledge == null) colonyKnowledge = new List<ColonyKnowledgeSaveRecord>();
@@ -87,6 +88,7 @@ namespace KnowledgeFramework
                 if (pawnExpertise == null) pawnExpertise = new List<PawnExpertiseSaveRecord>();
                 RebuildIndexes();
                 RebuildV2Indexes();
+                RebuildV3Indexes();
                 MigrateLegacyV1();
                 KnowledgeDomainRegistry.InvalidateDomain(null);
                 KnowledgeRegistry.ResetGameCaches();
@@ -98,6 +100,7 @@ namespace KnowledgeFramework
             base.FinalizeInit();
             RebuildIndexes();
             RebuildV2Indexes();
+            RebuildV3Indexes();
             MigrateLegacyV1();
         }
 

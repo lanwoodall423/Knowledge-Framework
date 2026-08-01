@@ -1,6 +1,7 @@
 // Documentation-only examples. This file is not compiled or loaded as runtime content.
 // It covers: implicit facet, faceted Def schema, generated subjects, observations,
-// reporting, reveals, typed effects, insights, relationships, and V1 migration.
+// reporting, reveals, typed effects, insights, relationships, V1 migration, and V3
+// claims, contexts, milestones, filtered transmission, and comparisons.
 
 // 1. Minimal implicit-facet domain:
 KnowledgeRegistry.RegisterDomain(new KnowledgeDomainRegistration { id = "example.minimal", label = "Minimal" });
@@ -40,3 +41,61 @@ KnowledgeFacetSnapshotV2 derived = KnowledgeQuery.Facet("example.minimal", "rela
 // 10. V1 save migration:
 KnowledgeService.ImportMinimum("example.minimal", "generated-17", pawn, 12f, 4f, 8f,
     new Dictionary<string, int> { ["study"] = 3 });
+
+// 11. V3 typed claim with an explicit context:
+KnowledgeContextKey region = new KnowledgeContextKey("region", map.uniqueID.ToString());
+KnowledgeEngine.Submit(new KnowledgeObservation
+{
+    observer = pawn,
+    domainId = "example.minimal",
+    subjectId = "generated-17",
+    context = region,
+    claimMeasurements = new[]
+    {
+        new KnowledgeMeasurement
+        {
+            claimId = "temperature",
+            value = KnowledgeClaimValue.Float(18f),
+            source = "example"
+        }
+    }
+});
+KnowledgeClaimSnapshot temperature = KnowledgeContextQuery.Claim(
+    "example.minimal", "generated-17", "default", "temperature", region, pawn);
+
+// 12. V3 progression and structural relation:
+KnowledgeMilestoneService.Confirm("example.minimal", "generated-17", "field", "established", pawn, region);
+KnowledgeRelationService.Add(new KnowledgeSubjectRelation
+{
+    domainId = "example.minimal", fromSubjectId = "generated-17",
+    toDomainId = "example.minimal", toSubjectId = "template",
+    relationTypeId = "example.parent", confidence = 1f, context = region
+});
+KnowledgeComparisonSnapshot comparison = KnowledgeComparisonService.Compare(
+    "example.minimal", "generated-17", "template", pawn);
+
+// 13. V3 filtered transmission and idempotent migration:
+KnowledgeTransmission.Transfer(new KnowledgeTransmissionRequest
+{
+    kind = KnowledgeTransmissionKind.Report,
+    domainId = "example.minimal",
+    subjectId = "generated-17",
+    sourcePawn = pawn,
+    facetIds = new[] { "default" },
+    context = region,
+    maximumConfidence = 0.8f,
+    includeProvenance = true
+});
+KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+{
+    consumerId = "example.mod",
+    version = 2,
+    domainId = "example.minimal",
+    subjectId = "generated-17",
+    pawn = pawn,
+    claims = new[] { new KnowledgeMeasurement
+    {
+        domainId = "example.minimal", subjectId = "generated-17", facetId = "default",
+        claimId = "temperature", value = KnowledgeClaimValue.Float(18f), observer = pawn
+    } }
+});

@@ -14,14 +14,22 @@ namespace KnowledgeFramework
         public readonly string subjectId;
         public readonly Pawn pawn;
         public readonly KnowledgeScope scope;
+        public readonly KnowledgeContextKey context;
 
         internal KnowledgeInsightContext(KnowledgeInsightDef insight, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+            : this(insight, domainId, subjectId, pawn, scope, KnowledgeContextKey.Empty)
+        {
+        }
+
+        internal KnowledgeInsightContext(KnowledgeInsightDef insight, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope,
+            KnowledgeContextKey context)
         {
             this.insight = insight;
             this.domainId = domainId;
             this.subjectId = subjectId;
             this.pawn = pawn;
             this.scope = scope;
+            this.context = context;
         }
     }
 
@@ -67,32 +75,32 @@ namespace KnowledgeFramework
         }
 
         public static KnowledgeInsightProgress Progress(string insightId, string domainId, string subjectId, Pawn pawn = null,
-            KnowledgeScope scope = KnowledgeScope.Personal)
+            KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey))
         {
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             KnowledgeInsightDef insight = schema?.insights.FirstOrDefault(item => item.defName == insightId);
             if (insight == null) return new KnowledgeInsightProgress(insightId, false, false, new[] { "Unknown insight." });
             bool colony = scope == KnowledgeScope.Colony;
             bool activated = GameComponent_KnowledgeFramework.Current?.InsightActivated(domainId, subjectId, insightId, pawn, colony) == true;
-            List<string> unmet = Unmet(new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope));
+            List<string> unmet = Unmet(new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope, context));
             return new KnowledgeInsightProgress(insightId, activated, unmet.Count == 0, unmet);
         }
 
         public static bool Confirm(string insightId, string domainId, string subjectId, Pawn pawn = null,
-            KnowledgeScope scope = KnowledgeScope.Personal)
+            KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey))
         {
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             KnowledgeInsightDef insight = schema?.insights.FirstOrDefault(item => item.defName == insightId);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
-            if (insight == null || component == null || Unmet(new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope)).Count > 0)
+            if (insight == null || component == null || Unmet(new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope, context)).Count > 0)
                 return false;
             bool colony = scope == KnowledgeScope.Colony;
             if (insight.preventRepeat && component.InsightActivated(domainId, subjectId, insightId, pawn, colony)) return false;
-            KnowledgeInsightContext context = new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope);
+            KnowledgeInsightContext contextValue = new KnowledgeInsightContext(insight, domainId, subjectId, pawn, scope, context);
             component.ActivateInsight(domainId, subjectId, insightId, pawn, colony);
             List<KnowledgeChange> changes = new List<KnowledgeChange>();
-            ApplyOutcomes(component, context, changes);
-            InvokeSafely(InsightConfirmed, context, "confirmed");
+            ApplyOutcomes(component, contextValue, changes);
+            InvokeSafely(InsightConfirmed, contextValue, "confirmed");
             KnowledgeUiCache.Invalidate(changes);
             return true;
         }
@@ -114,15 +122,16 @@ namespace KnowledgeFramework
                 foreach (KnowledgeInsightDef insight in KnowledgeRegistry.InsightsFor(domainId, facetId))
                 {
                     if (insight == null || !ScopeMatches(insight.scope, colony)) continue;
+                    string ownerDomainId = insight.domainId.NullOrEmpty() ? domainId : insight.domainId;
                     string evaluationKey = insight.defName + "\n" + subjectId + "\n" + (colony ? "C" : (pawn?.thingIDNumber ?? 0).ToString());
-                    bool alreadyActivated = component.InsightActivated(domainId, subjectId, insight.defName, pawn, colony);
+                    bool alreadyActivated = component.InsightActivated(ownerDomainId, subjectId, insight.defName, pawn, colony);
                     if (!evaluated.Add(evaluationKey) || alreadyActivated && insight.preventRepeat) continue;
-                    KnowledgeInsightContext context = new KnowledgeInsightContext(insight, domainId, subjectId, pawn,
+                    KnowledgeInsightContext context = new KnowledgeInsightContext(insight, ownerDomainId, subjectId, pawn,
                         colony ? KnowledgeScope.Colony : KnowledgeScope.Personal);
                     if (Unmet(context).Count > 0) continue;
                     InvokeSafely(InsightAvailable, context, "available");
                     if (!insight.activateAutomatically) continue;
-                    component.ActivateInsight(domainId, subjectId, insight.defName, pawn, colony);
+                    component.ActivateInsight(ownerDomainId, subjectId, insight.defName, pawn, colony);
                     ApplyOutcomes(component, context, changes);
                     activated.Add(insight.defName);
                     InvokeSafely(InsightConfirmed, context, "confirmed");
@@ -134,6 +143,9 @@ namespace KnowledgeFramework
         private static List<string> Unmet(KnowledgeInsightContext context)
         {
             List<string> result = new List<string>();
+            if (context.insight.requirementGroup != null && !KnowledgeRequirementService.Evaluate(context.insight.requirementGroup,
+                context.domainId, context.subjectId, context.pawn, context.scope, context.context, out List<string> groupedUnmet)) result.AddRange(groupedUnmet);
+            if (context.insight.requirementGroup != null) return result;
             if (context.insight.requirements == null) return result;
             for (int i = 0; i < context.insight.requirements.Count; i++)
             {
@@ -146,6 +158,31 @@ namespace KnowledgeFramework
 
         private static bool RequirementMet(KnowledgeInsightContext context, KnowledgeInsightRequirement requirement)
         {
+            if (requirement?.group != null && !KnowledgeRequirementService.Evaluate(requirement.group, requirement.domainId.NullOrEmpty() ? context.domainId : requirement.domainId,
+                requirement.subjectId.NullOrEmpty() ? context.subjectId : requirement.subjectId, context.pawn, context.scope, context.context, out _)) return false;
+            if (!requirement.domainId.NullOrEmpty() || !requirement.claimId.NullOrEmpty() || requirement.value != null || !requirement.contextTypeId.NullOrEmpty())
+            {
+                KnowledgeRequirement generalized = new KnowledgeRequirement
+                {
+                    domainId = requirement.domainId,
+                    kind = requirement.claimId.NullOrEmpty() ? requirement.kind : KnowledgeRequirementKind.ClaimValue,
+                    subjectId = requirement.subjectId,
+                    facetId = requirement.facetId,
+                    claimId = requirement.claimId,
+                    trackId = requirement.trackId,
+                    eventId = requirement.eventId,
+                    insightId = requirement.insightId,
+                    stageId = requirement.stageId,
+                    customId = requirement.customId,
+                    minimum = requirement.minimum,
+                    colony = requirement.colony,
+                    contextTypeId = requirement.contextTypeId,
+                    contextId = requirement.contextId,
+                    value = requirement.value,
+                    comparison = requirement.comparison
+                };
+                return KnowledgeRequirementService.Evaluate(generalized, context.domainId, context.subjectId, context.pawn, context.scope, context.context);
+            }
             string subjectId = requirement.subjectId.NullOrEmpty() ? context.subjectId : requirement.subjectId;
             KnowledgeScope scope = requirement.colony ? KnowledgeScope.Colony : context.scope;
             KnowledgeFacetSnapshotV2 facet = KnowledgeQuery.Facet(context.domainId, subjectId, requirement.facetId,
@@ -207,7 +244,11 @@ namespace KnowledgeFramework
                         suppressConfiguredKnowledge = true,
                         source = "insight:" + context.insight.defName,
                         reasonId = context.insight.defName,
-                        documented = outcome.document
+                        documented = outcome.document,
+                        claimMeasurements = outcome.claimMeasurements,
+                        sharedExpertiseNamespaceId = outcome.sharedExpertiseNamespaceId,
+                        sharedExpertiseWeight = outcome.sharedExpertiseWeight,
+                        context = context.context
                     };
                     KnowledgeEngine.ApplyInsightOutcome(component, observation, changes);
                 }
@@ -253,6 +294,9 @@ namespace KnowledgeFramework
         public float baseValue;
         public bool basePermission = true;
         public string contextId;
+        public string contextTypeId;
+        public KnowledgeContextKey context;
+        public bool includeExplanation;
     }
 
     public sealed class KnowledgeEffectResult
@@ -263,9 +307,10 @@ namespace KnowledgeFramework
         public readonly string resultId;
         public readonly float predictionAccuracy;
         public readonly IReadOnlyList<string> actionIds;
+        public readonly IReadOnlyList<string> explanation;
 
         internal KnowledgeEffectResult(float numeric, bool permitted, bool revealed, string resultId,
-            float prediction, IEnumerable<string> actions)
+            float prediction, IEnumerable<string> actions, IEnumerable<string> explanation = null)
         {
             numericValue = numeric;
             this.permitted = permitted;
@@ -273,6 +318,7 @@ namespace KnowledgeFramework
             this.resultId = resultId;
             predictionAccuracy = prediction;
             actionIds = new ReadOnlyCollection<string>((actions ?? Enumerable.Empty<string>()).Distinct().ToList());
+            this.explanation = new ReadOnlyCollection<string>((explanation ?? Enumerable.Empty<string>()).Distinct().ToList());
         }
     }
 
@@ -293,6 +339,7 @@ namespace KnowledgeFramework
         private int overridePriority = int.MinValue;
         private float prediction;
         private readonly List<string> actions = new List<string>();
+        private readonly List<string> explanation = new List<string>();
 
         internal KnowledgeEffectAccumulator(float numeric, bool permitted)
         {
@@ -318,10 +365,12 @@ namespace KnowledgeFramework
                 case KnowledgeEffectComposition.Action: if (!id.NullOrEmpty()) actions.Add(id); break;
                 case KnowledgeEffectComposition.Prediction: prediction = Math.Max(prediction, KnowledgeMath.Clamp01Finite(value)); break;
             }
+            explanation.Add((id.NullOrEmpty() ? composition.ToString() : id) + ": " + composition);
             if (!KnowledgeMath.IsFinite(numeric)) numeric = 0f;
         }
 
-        internal KnowledgeEffectResult Result() => new KnowledgeEffectResult(numeric, permitted, revealed, resultId, prediction, actions);
+        internal KnowledgeEffectResult Result(bool includeExplanation = true) => new KnowledgeEffectResult(numeric, permitted, revealed, resultId, prediction, actions,
+            includeExplanation ? explanation : null);
     }
 
     public static class KnowledgeEffects
@@ -359,13 +408,16 @@ namespace KnowledgeFramework
 
         public static KnowledgeEffectResult Query(KnowledgeEffectQuery query)
         {
-            if (query == null || query.channelId.NullOrEmpty()) return new KnowledgeEffectAccumulator(query?.baseValue ?? 0f, query?.basePermission ?? false).Result();
+            if (query == null || query.channelId.NullOrEmpty()) return new KnowledgeEffectAccumulator(query?.baseValue ?? 0f, query?.basePermission ?? false).Result(query?.includeExplanation == true);
             KnowledgeSchema schema = KnowledgeRegistry.Schema(query.domainId);
             KnowledgeEffectAccumulator accumulator = new KnowledgeEffectAccumulator(
                 KnowledgeMath.IsFinite(query.baseValue) ? query.baseValue : 0f, query.basePermission);
             if (schema == null) return accumulator.Result();
+            KnowledgeContextKey context = query.context.IsEmpty && !query.contextTypeId.NullOrEmpty() && !query.contextId.NullOrEmpty()
+                ? new KnowledgeContextKey(query.contextTypeId, query.contextId) : query.context;
             KnowledgeScope effectScope = query.scope;
-            KnowledgeFacetSnapshotV2 facet = KnowledgeQuery.Facet(query.domainId, query.subjectId, query.facetId, query.pawn, effectScope, true, false);
+            KnowledgeFacetSnapshotV2 facet = KnowledgeQuery.Facet(query.domainId, query.subjectId, query.facetId, query.pawn, effectScope, true, false, context,
+                KnowledgeContextFallbackMode.ParentThenGlobal);
             KnowledgeSubjectSnapshotV2 subject = KnowledgeQuery.Subject(query.domainId, query.subjectId, query.pawn, effectScope);
             foreach (KnowledgeEffectDef effect in schema.effects.Where(item => item.channelId == query.channelId))
             {
@@ -376,7 +428,9 @@ namespace KnowledgeFramework
                     ? KnowledgeQuery.Subject(query.domainId, query.subjectId, null, KnowledgeScope.Colony)
                     : subject;
                 if (effectFacet.amount < effect.minimumKnowledge || effectFacet.confidence < effect.minimumConfidence ||
-                    !StageMet(schema, effectSubject.stageId, effect.minimumStageId)) continue;
+                    !StageMet(schema, effectSubject.stageId, effect.minimumStageId) ||
+                    effect.requirements != null && !KnowledgeRequirementService.Evaluate(effect.requirements, schema.id, query.subjectId, query.pawn,
+                        effect.useColony ? KnowledgeScope.Colony : effectScope, context, out _)) continue;
                 accumulator.Compose(effect.composition, effect.value, effect.priority, effect.resultId);
             }
             if (Providers.TryGetValue(schema.id, out List<IKnowledgeTypedEffectProvider> providers))
@@ -388,7 +442,7 @@ namespace KnowledgeFramework
                         "Typed effect provider '" + providers[i].Id + "' failed.", exception); }
                 }
             }
-            return accumulator.Result();
+            return accumulator.Result(query.includeExplanation);
         }
 
         private static bool StageMet(KnowledgeSchema schema, string actualId, string requiredId)

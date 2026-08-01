@@ -27,7 +27,7 @@ namespace KnowledgeFramework
         }
     }
 
-    public static class KnowledgeDiscovery
+    public static partial class KnowledgeDiscovery
     {
         public static KnowledgeStageSchema Stage(string domainId, string stageId) => KnowledgeRegistry.Schema(domainId)?.Stage(stageId);
 

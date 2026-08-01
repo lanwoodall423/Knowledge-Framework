@@ -58,7 +58,16 @@ namespace KnowledgeFramework
         Expertise,
         RelatedKnowledge,
         Insight,
-        Custom
+        Custom,
+        Completeness,
+        ClaimExists,
+        ClaimConfidence,
+        ClaimValue,
+        Documentation,
+        Milestone,
+        EventCount,
+        Context,
+        RelatedClaim
     }
 
     public enum KnowledgeRegistrationConflict
@@ -75,6 +84,9 @@ namespace KnowledgeFramework
         public float minimumKnowledge;
         public float minimumConfidence;
         public bool documented;
+        public KnowledgeRequirementGroup requirementGroup;
+        public bool allowRegression;
+        public bool contextSensitive;
     }
 
     /// <summary>A separately knowable part of a subject.</summary>
@@ -91,6 +103,7 @@ namespace KnowledgeFramework
         public float revealKnowledge;
         public float revealConfidence;
         public List<string> relatedFacetIds;
+        public List<string> claimIds;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
     }
@@ -119,6 +132,12 @@ namespace KnowledgeFramework
         public bool shareable = true;
         public bool retainProvenance;
         public List<string> facetIds;
+        public List<KnowledgeObservationOutcome> successOutcomes;
+        public List<KnowledgeObservationOutcome> failureOutcomes;
+        public List<KnowledgeExpertiseOutcome> expertiseOutcomes;
+        public KnowledgeWitnessDistribution witnessDistribution;
+        public KnowledgeAccrualPolicy accrualPolicy;
+        public bool propagateContext = true;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
     }
@@ -147,6 +166,7 @@ namespace KnowledgeFramework
         public string minimumStageId;
         public bool useColony;
         public string resultId;
+        public KnowledgeRequirementGroup requirements;
     }
 
     public sealed class KnowledgeInsightRequirement
@@ -161,6 +181,13 @@ namespace KnowledgeFramework
         public string customId;
         public float minimum;
         public bool colony;
+        public string domainId;
+        public string claimId;
+        public string contextTypeId;
+        public string contextId;
+        public KnowledgeClaimValue value;
+        public KnowledgeRequirementComparison comparison = KnowledgeRequirementComparison.GreaterOrEqual;
+        public KnowledgeRequirementGroup group;
     }
 
     public sealed class KnowledgeInsightOutcome
@@ -173,6 +200,9 @@ namespace KnowledgeFramework
         public string stageId;
         public bool document;
         public string customId;
+        public List<KnowledgeMeasurement> claimMeasurements;
+        public string sharedExpertiseNamespaceId;
+        public float sharedExpertiseWeight = 1f;
     }
 
     public sealed class KnowledgeInsightDef : Def
@@ -183,18 +213,22 @@ namespace KnowledgeFramework
         public bool preventRepeat = true;
         public List<KnowledgeInsightRequirement> requirements;
         public List<KnowledgeInsightOutcome> outcomes;
+        public KnowledgeRequirementGroup requirementGroup;
     }
 
     /// <summary>A directional, non-recursive source of provisional derived knowledge.</summary>
     public sealed class KnowledgeRelationshipDef : Def
     {
         public string domainId;
+        public string fromDomainId;
+        public string toDomainId;
         public string fromSubjectId;
         public string toSubjectId;
         public string facetId;
         public float coefficient;
         public float confidenceCoefficient = 0.5f;
         public bool provisional = true;
+        public KnowledgeRequirementGroup requirements;
     }
 
     public sealed class KnowledgeTransmissionDef : Def
@@ -220,6 +254,10 @@ namespace KnowledgeFramework
         public float templateConfidenceCoefficient = 0.5f;
         public List<string> categoryIds;
         public int sortOrder;
+        public string archetypeId;
+        public List<string> applicableFacetIds;
+        public List<string> applicableClaimIds;
+        public KnowledgeSubjectState state;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
     }
@@ -243,6 +281,10 @@ namespace KnowledgeFramework
         public List<KnowledgeInsightDef> insights;
         public List<KnowledgeRelationshipDef> relationships;
         public KnowledgeTransmissionDef transmission;
+        public List<KnowledgeClaimDef> claims;
+        public List<KnowledgeSubjectArchetypeDef> archetypes;
+        public List<KnowledgeMilestoneTrackDef> milestoneTracks;
+        public List<KnowledgeExpertiseNamespaceDef> expertiseNamespaces;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
     }
@@ -262,6 +304,10 @@ namespace KnowledgeFramework
         public IReadOnlyList<string> categoryIds;
         public int sortOrder;
         public string source;
+        public string archetypeId;
+        public IReadOnlyList<string> applicableFacetIds;
+        public IReadOnlyList<string> applicableClaimIds;
+        public KnowledgeSubjectState state;
     }
 
     public sealed class KnowledgeDomainRegistration
@@ -284,6 +330,10 @@ namespace KnowledgeFramework
         public IReadOnlyList<KnowledgeInsightDef> insights;
         public IReadOnlyList<KnowledgeRelationshipDef> relationships;
         public KnowledgeTransmissionDef transmission;
+        public IReadOnlyList<KnowledgeClaimDef> claims;
+        public IReadOnlyList<KnowledgeSubjectArchetypeDef> archetypes;
+        public IReadOnlyList<KnowledgeMilestoneTrackDef> milestoneTracks;
+        public IReadOnlyList<KnowledgeExpertiseNamespaceDef> expertiseNamespaces;
         public Func<string, KnowledgeSubjectRegistration> subjectResolver;
         public Func<IEnumerable<KnowledgeSubjectRegistration>> subjectSource;
         public string source;

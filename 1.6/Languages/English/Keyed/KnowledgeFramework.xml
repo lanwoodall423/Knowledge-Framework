@@ -42,6 +42,8 @@
   <KnowledgeFramework_Relationships>Related knowledge</KnowledgeFramework_Relationships>
   <KnowledgeFramework_RelationshipValue>From {0}: {1} knowledge, {2} confidence</KnowledgeFramework_RelationshipValue>
   <KnowledgeFramework_Insights>Insights</KnowledgeFramework_Insights>
+  <KnowledgeFramework_Claims>Claims</KnowledgeFramework_Claims>
+  <KnowledgeFramework_Milestones>Milestones</KnowledgeFramework_Milestones>
   <KnowledgeFramework_InsightReady>{0}: ready</KnowledgeFramework_InsightReady>
   <KnowledgeFramework_InsightProgress>{0}: {1} requirements unmet</KnowledgeFramework_InsightProgress>
 </LanguageData>

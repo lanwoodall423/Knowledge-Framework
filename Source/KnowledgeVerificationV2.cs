@@ -75,6 +75,9 @@ namespace KnowledgeFramework
                 normalized.facetId == KnowledgeSchema.DefaultFacetId, ref passed, failures);
             KnowledgeSchema minimal = new KnowledgeSchema(new KnowledgeDomainRegistration { id = "pure.minimal", label = "Minimal" }, 0, "verification");
             Check("implicit facet", minimal.facets.Count == 1 && minimal.facets[0].id == KnowledgeSchema.DefaultFacetId, ref passed, failures);
+            KnowledgeVerificationResult v3 = KnowledgeFrameworkVerificationV3.RunPureTests();
+            passed += v3.passed;
+            failures.AddRange(v3.failures.Select(value => "v3 " + value));
             return new KnowledgeVerificationResult(passed, failures);
         }
 
@@ -216,6 +219,9 @@ namespace KnowledgeFramework
                 KnowledgeRegistry.UnregisterDomain(TestDomain, "verification");
                 KnowledgeRegistry.ClearDiagnostics(TestDomain);
             }
+            KnowledgeVerificationResult v3 = KnowledgeFrameworkVerificationV3.RunGameTests(pawn);
+            passed += v3.passed;
+            failures.AddRange(v3.failures.Select(value => "v3 " + value));
             return new KnowledgeVerificationResult(passed, failures);
         }
 

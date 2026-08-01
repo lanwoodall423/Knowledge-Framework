@@ -192,19 +192,22 @@ namespace KnowledgeFramework
             KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subject.id, pawn, scope);
             Widgets.Label(new Rect(inner.x, inner.y + 38f, inner.width, 24f), "KnowledgeFramework_StageValue".Translate(state.stageId ?? "KnowledgeFramework_Unknown".Translate()));
             float y = inner.y + 68f;
-            List<KnowledgeRelationshipSnapshot> relationships = schema.facets.SelectMany(facet => KnowledgeQuery.Relationships(
+            IReadOnlyList<KnowledgeFacetSchema> applicableFacets = KnowledgeRegistry.ApplicableFacets(schema.id, subject.id);
+            List<KnowledgeRelationshipSnapshot> relationships = applicableFacets.SelectMany(facet => KnowledgeQuery.Relationships(
                 schema.id, subject.id, facet.id, pawn, scope)).ToList();
             List<KnowledgeInsightProgress> insights = schema.insights.Select(insight => KnowledgeInsightService.Progress(
                 insight.defName, schema.id, subject.id, pawn, scope)).ToList();
             Rect outer = new Rect(inner.x, y, inner.width, inner.yMax - y);
-            float extraHeight = relationships.Count * 38f + insights.Count * 38f + 80f;
-            Rect view = new Rect(0f, 0f, outer.width - 16f, Math.Max(outer.height, schema.facets.Count * 72f + extraHeight));
+            List<KnowledgeClaimSnapshot> claims = applicableFacets.SelectMany(facet => KnowledgeClaimService.ForSubject(schema.id, subject.id, facet.id, pawn, scope)).ToList();
+            List<KnowledgeMilestoneState> milestones = KnowledgeMilestoneService.States(schema.id, subject.id, pawn).ToList();
+            float extraHeight = relationships.Count * 38f + insights.Count * 38f + claims.Count * 34f + milestones.Count * 30f + 80f;
+            Rect view = new Rect(0f, 0f, outer.width - 16f, Math.Max(outer.height, applicableFacets.Count * 72f + extraHeight));
             Widgets.BeginScrollView(outer, ref facetScroll, view);
             try
             {
-                for (int i = 0; i < schema.facets.Count; i++)
+                for (int i = 0; i < applicableFacets.Count; i++)
                 {
-                    KnowledgeFacetSchema facet = schema.facets[i];
+                    KnowledgeFacetSchema facet = applicableFacets[i];
                     KnowledgeFacetSnapshotV2 value = KnowledgeQuery.Facet(schema.id, subject.id, facet.id, pawn, scope);
                     Rect row = new Rect(0f, i * 72f, view.width, 66f);
                     Widgets.Label(new Rect(row.x, row.y, row.width * 0.5f, 24f), facet.label);
@@ -215,7 +218,7 @@ namespace KnowledgeFramework
                     Text.Anchor = TextAnchor.UpperLeft;
                     if (value.provisional) TooltipHandler.TipRegion(row, "KnowledgeFramework_ProvisionalKnowledge".Translate());
                 }
-                float extraY = schema.facets.Count * 72f;
+                float extraY = applicableFacets.Count * 72f;
                 if (relationships.Count > 0)
                 {
                     Widgets.Label(new Rect(0f, extraY, view.width, 24f), "KnowledgeFramework_Relationships".Translate());
@@ -241,6 +244,27 @@ namespace KnowledgeFramework
                             "KnowledgeFramework_InsightProgress".Translate(insight.insightId, insight.unmetRequirements.Count));
                     }
                     extraY += insights.Count * 38f;
+                }
+                if (claims.Count > 0)
+                {
+                    Widgets.Label(new Rect(0f, extraY, view.width, 24f), "KnowledgeFramework_Claims".Translate());
+                    extraY += 26f;
+                    foreach (KnowledgeClaimSnapshot claim in claims)
+                    {
+                        string value = claim.value == null ? "KnowledgeFramework_Unknown".Translate() : claim.value.ToString();
+                        Widgets.Label(new Rect(4f, extraY, view.width, 28f), claim.claimId + ": " + value + " (" + claim.effectiveConfidence.ToStringPercent() + ")");
+                        extraY += 34f;
+                    }
+                }
+                if (milestones.Count > 0)
+                {
+                    Widgets.Label(new Rect(0f, extraY, view.width, 24f), "KnowledgeFramework_Milestones".Translate());
+                    extraY += 26f;
+                    foreach (KnowledgeMilestoneState milestone in milestones)
+                    {
+                        Widgets.Label(new Rect(4f, extraY, view.width, 24f), milestone.milestoneId + ": " + (milestone.completed ? "100%" : milestone.progress.ToStringPercent()));
+                        extraY += 30f;
+                    }
                 }
                 provider?.DrawSubjectDetails(new Rect(0f, extraY, view.width, 80f), subject, pawn, scope);
             }

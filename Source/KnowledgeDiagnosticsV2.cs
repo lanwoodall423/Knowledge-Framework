@@ -24,10 +24,22 @@ namespace KnowledgeFramework
         public readonly int cacheMisses;
         public readonly int affectedInsights;
         public readonly int affectedRelationships;
+        public readonly int claimCount;
+        public readonly int measurementCount;
+        public readonly int contextCount;
+        public readonly int milestoneCount;
+        public readonly int relationCount;
+        public readonly int accrualPolicyKeyCount;
+        public readonly int subjectCacheInvalidations;
+        public readonly long comparisonTicks;
+        public readonly long migrationTicks;
+        public readonly int witnessFanout;
+        public readonly int recipeFanout;
 
         internal KnowledgeDiagnosticsSnapshot(long registrationTicks, long schemaBuildTicks, long transactionTicks,
             int transactionCount, int personal, int colony, int expertise, int orphans, long bytes,
-            int hits, int misses, int insights, int relationships)
+            int hits, int misses, int insights, int relationships, int claims, int measurements, int contexts, int milestones,
+            int relations, int accrual, int invalidations, long comparisons, long migrations, int witnessFanout, int recipeFanout)
         {
             this.registrationTicks = registrationTicks;
             this.schemaBuildTicks = schemaBuildTicks;
@@ -42,6 +54,17 @@ namespace KnowledgeFramework
             cacheMisses = misses;
             affectedInsights = insights;
             affectedRelationships = relationships;
+            claimCount = claims;
+            measurementCount = measurements;
+            contextCount = contexts;
+            milestoneCount = milestones;
+            relationCount = relations;
+            accrualPolicyKeyCount = accrual;
+            subjectCacheInvalidations = invalidations;
+            comparisonTicks = comparisons;
+            migrationTicks = migrations;
+            this.witnessFanout = witnessFanout;
+            this.recipeFanout = recipeFanout;
         }
     }
 
@@ -59,6 +82,11 @@ namespace KnowledgeFramework
         private static int cacheMisses;
         private static int affectedInsights;
         private static int affectedRelationships;
+        private static int subjectCacheInvalidations;
+        private static long comparisonTicks;
+        private static long migrationTicks;
+        private static int witnessFanout;
+        private static int recipeFanout;
 
         public static bool Enabled => Prefs.DevMode;
 
@@ -67,7 +95,10 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             return new KnowledgeDiagnosticsSnapshot(registrationTicks, schemaBuildTicks, transactionTicks, transactionCount,
                 personalRecords, colonyRecords, expertiseRecords, orphanRecords, component?.ApproximatePersistentBytes() ?? 0L,
-                cacheHits, cacheMisses, affectedInsights, affectedRelationships);
+                cacheHits, cacheMisses, affectedInsights, affectedRelationships, component?.V3ClaimCount ?? 0,
+                component?.V3MeasurementCount ?? 0, component?.V3ContextCount ?? 0, component?.V3MilestoneCount ?? 0,
+                component?.V3RelationCount ?? 0, component?.V3AccrualCount ?? 0, subjectCacheInvalidations,
+                comparisonTicks, migrationTicks, witnessFanout, recipeFanout);
         }
 
         internal static void RecordRegistration(long ticks) { if (Enabled) registrationTicks += ticks; }
@@ -90,6 +121,15 @@ namespace KnowledgeFramework
         }
         internal static void CacheHit() { if (Enabled) cacheHits++; }
         internal static void CacheMiss() { if (Enabled) cacheMisses++; }
+        internal static void SubjectCacheInvalidated() { if (Enabled) subjectCacheInvalidations++; }
+        internal static void RecordComparison(long ticks) { if (Enabled) comparisonTicks += ticks; }
+        internal static void RecordMigration(long ticks) { if (Enabled) migrationTicks += ticks; }
+        internal static void RecordFanout(int witnesses, int recipes)
+        {
+            if (!Enabled) return;
+            witnessFanout += Math.Max(0, witnesses);
+            recipeFanout += Math.Max(0, recipes);
+        }
     }
 
     internal static class KnowledgeUiCache

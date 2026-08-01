@@ -31,8 +31,15 @@ namespace KnowledgeFramework
         public string source;
         public string sourceInstanceId;
         public string contextId;
+        public string contextTypeId;
+        public KnowledgeContextKey context;
+        public string specimenId;
         public string summary;
         public IReadOnlyDictionary<string, string> metadata;
+        public IReadOnlyList<KnowledgeMeasurement> claimMeasurements;
+        public KnowledgeWitnessDistribution witnessDistribution;
+        public string sharedExpertiseNamespaceId;
+        public float sharedExpertiseWeight = 1f;
         public float directKnowledge;
         public float directExpertise;
         public float directFamiliarity;
@@ -219,6 +226,8 @@ namespace KnowledgeFramework
     public sealed class KnowledgeRelationshipSnapshot
     {
         public readonly string domainId;
+        public readonly string fromDomainId;
+        public readonly string toDomainId;
         public readonly string fromSubjectId;
         public readonly string toSubjectId;
         public readonly string facetId;
@@ -231,6 +240,8 @@ namespace KnowledgeFramework
         internal KnowledgeRelationshipSnapshot(KnowledgeRelationshipDef definition, KnowledgeFacetSnapshotV2 source)
         {
             domainId = definition.domainId;
+            fromDomainId = definition.fromDomainId.NullOrEmpty() ? definition.domainId : definition.fromDomainId;
+            toDomainId = definition.toDomainId.NullOrEmpty() ? definition.domainId : definition.toDomainId;
             fromSubjectId = definition.fromSubjectId;
             toSubjectId = definition.toSubjectId;
             facetId = definition.facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : definition.facetId;
@@ -270,14 +281,16 @@ namespace KnowledgeFramework
         public readonly string firstSubjectId;
         public readonly string secondSubjectId;
         public readonly IReadOnlyList<KnowledgeFacetComparison> facets;
+        public readonly IReadOnlyList<KnowledgeComparisonRow> rows;
 
         internal KnowledgeComparisonSnapshot(string domainId, string firstSubjectId, string secondSubjectId,
-            IEnumerable<KnowledgeFacetComparison> facets)
+            IEnumerable<KnowledgeFacetComparison> facets, IEnumerable<KnowledgeComparisonRow> rows = null)
         {
             this.domainId = domainId;
             this.firstSubjectId = firstSubjectId;
             this.secondSubjectId = secondSubjectId;
             this.facets = new ReadOnlyCollection<KnowledgeFacetComparison>((facets ?? Enumerable.Empty<KnowledgeFacetComparison>()).ToList());
+            this.rows = new ReadOnlyCollection<KnowledgeComparisonRow>((rows ?? Enumerable.Empty<KnowledgeComparisonRow>()).ToList());
         }
     }
 
@@ -378,6 +391,12 @@ namespace KnowledgeFramework
             if (transaction == null || transaction.Observations.Count == 0) return Failed("The transaction contains no observations.");
             if (transaction.Observations.Count > 256) return Failed("A transaction is limited to 256 observations.");
 
+            if (!KnowledgeV3Runtime.PrepareTransaction(transaction, out KnowledgeTransaction prepared, out string preparationError))
+                return Failed(preparationError);
+            transaction = prepared;
+            if (transaction.Observations.Count > KnowledgeV3Runtime.ExpandedTransactionLimit)
+                return Failed("The expanded transaction exceeds the safe observation limit.");
+
             List<ValidatedObservation> validated = new List<ValidatedObservation>(transaction.Observations.Count);
             for (int i = 0; i < transaction.Observations.Count; i++)
             {
@@ -391,6 +410,7 @@ namespace KnowledgeFramework
             HashSet<Pawn> changedPawns = new HashSet<Pawn>();
             for (int i = 0; i < validated.Count; i++) Apply(component, validated[i], changes, changedDependencies, changedPawns);
             List<string> insights = KnowledgeInsightService.EvaluateTouched(component, changedDependencies, changes);
+            KnowledgeMilestoneService.EvaluateTouched(changes);
             component.RefreshDiagnosticsV2();
 
             foreach (Pawn pawn in changedPawns) KnowledgeProviderRegistry.Invalidate(pawn);
@@ -552,8 +572,9 @@ namespace KnowledgeFramework
                 subject.documentationSource = value.input.source;
             }
             if (expertise != null) expertise.amount = Math.Min(100000000f, expertise.amount + value.expertise);
-            UpdateStage(component, value.schema, value.domainId, value.subjectId, pawn, colony, subject);
+            UpdateStage(component, value.schema, value.domainId, value.subjectId, pawn, colony, subject, KnowledgeV3Runtime.ContextFor(value.input));
             component.Touch(subject, facet, expertise);
+            KnowledgeV3Runtime.ApplyObservation(component, value, colony);
 
             float newConfidence = KnowledgeMath.Confidence(facet.supportingEvidence, facet.contradictoryEvidence, value.schema.uncertaintyEnabled);
             changes.Add(new KnowledgeChange(value.domainId, value.subjectId, value.facetId, pawn,
@@ -564,22 +585,31 @@ namespace KnowledgeFramework
         }
 
         internal static void UpdateStage(GameComponent_KnowledgeFramework component, KnowledgeSchema schema, string domainId,
-            string subjectId, Pawn pawn, bool colony, KnowledgeSubjectStateRecord subject)
+            string subjectId, Pawn pawn, bool colony, KnowledgeSubjectStateRecord subject,
+            KnowledgeContextKey context = default(KnowledgeContextKey))
         {
             if (schema.stages.Count == 0) return;
             float amount = 0f;
             float confidence = 0f;
-            for (int i = 0; i < schema.facets.Count; i++)
+            IReadOnlyList<KnowledgeFacetSchema> applicable = KnowledgeRegistry.ApplicableFacets(domainId, subjectId);
+            for (int i = 0; i < applicable.Count; i++)
             {
                 KnowledgeFacetStateRecord facet = colony
-                    ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(domainId, subjectId, schema.facets[i].id, false)
-                    : component.PersonalFacetV2(domainId, subjectId, schema.facets[i].id, pawn, false);
+                    ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(domainId, subjectId, applicable[i].id, false)
+                    : component.PersonalFacetV2(domainId, subjectId, applicable[i].id, pawn, false);
                 if (facet == null) continue;
                 amount += facet.amount;
                 confidence = Math.Max(confidence, KnowledgeMath.Confidence(facet.supportingEvidence, facet.contradictoryEvidence, schema.uncertaintyEnabled));
             }
-            KnowledgeStageSchema stage = schema.stages.LastOrDefault(item => amount >= item.minimumKnowledge &&
-                confidence >= item.minimumConfidence && (!item.documented || subject.documented));
+            KnowledgeStageSchema current = schema.Stage(subject.stageId);
+            KnowledgeStageSchema stage = schema.stages.LastOrDefault(item =>
+            {
+                bool legacy = amount >= item.minimumKnowledge && confidence >= item.minimumConfidence && (!item.documented || subject.documented);
+                bool requirements = item.requirementGroup == null || KnowledgeRequirementService.Evaluate(item.requirementGroup, domainId, subjectId,
+                    pawn, colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, context, out _);
+                return legacy && requirements;
+            });
+            if (current != null && stage != null && !stage.allowRegression && stage.order < current.order) stage = current;
             subject.stageId = stage?.id;
         }
 
@@ -655,7 +685,7 @@ namespace KnowledgeFramework
         }
     }
 
-    public static class KnowledgeQuery
+    public static partial class KnowledgeQuery
     {
         public static KnowledgeFacetSnapshotV2 Facet(string domainId, string subjectId, string facetId = null,
             Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal, bool includeDerived = true,
@@ -671,6 +701,8 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (schema == null || facetSchema == null || component == null)
                 return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, pawn, scope, 0f, 0f, 0f, 0f, false, 0, 0, 0, 0, null);
+            if (!KnowledgeRegistry.ApplicableFacets(domainId, subjectId).Any(item => item.id == facetId))
+                return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, pawn, scope, 0f, 0f, 0f, 0f, false, 0, 0, 0, 0, null);
             KnowledgeFacetStateRecord record = scope == KnowledgeScope.Colony
                 ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(domainId, subjectId, facetId, false)
                 : component.PersonalFacetV2(domainId, subjectId, facetId, pawn, false);
@@ -684,7 +716,9 @@ namespace KnowledgeFramework
                 for (int i = 0; i < relationships.Count; i++)
                 {
                     KnowledgeRelationshipDef relation = relationships[i];
-                    KnowledgeFacetSnapshotV2 source = Facet(domainId, relation.fromSubjectId, facetId, pawn, scope, false, false);
+                    string sourceDomainId = relation.fromDomainId.NullOrEmpty() ? domainId : relation.fromDomainId;
+                    string sourceFacetId = relation.facetId.NullOrEmpty() ? facetId : relation.facetId;
+                    KnowledgeFacetSnapshotV2 source = Facet(sourceDomainId, relation.fromSubjectId, sourceFacetId, pawn, scope, false, false);
                     float candidate = source.directAmount * relation.coefficient;
                     if (candidate > derived)
                     {
@@ -744,6 +778,7 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null) return Array.Empty<KnowledgeFacetSnapshotV2>();
             return component.PersonalFacetRecordsV2(KnowledgeRegistry.ResolveDomainId(domainId), pawn)
+                .Where(item => KnowledgeRegistry.ApplicableFacets(item.domainId, item.subjectId).Any(facet => facet.id == item.facetId))
                 .Select(item => Facet(item.domainId, item.subjectId, item.facetId, pawn)).ToList();
         }
 
@@ -752,6 +787,7 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null) return Array.Empty<KnowledgeFacetSnapshotV2>();
             return component.ColonyFacetRecordsV2(KnowledgeRegistry.ResolveDomainId(domainId))
+                .Where(item => KnowledgeRegistry.ApplicableFacets(item.domainId, item.subjectId).Any(facet => facet.id == item.facetId))
                 .Select(item => Facet(item.domainId, item.subjectId, item.facetId, null, KnowledgeScope.Colony)).ToList();
         }
 
@@ -766,11 +802,7 @@ namespace KnowledgeFramework
         public static KnowledgeComparisonSnapshot Compare(string domainId, string firstSubjectId, string secondSubjectId,
             Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal)
         {
-            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
-            if (schema == null) return new KnowledgeComparisonSnapshot(domainId, firstSubjectId, secondSubjectId, null);
-            return new KnowledgeComparisonSnapshot(domainId, firstSubjectId, secondSubjectId, schema.facets.Select(facet =>
-                new KnowledgeFacetComparison(facet.id, Facet(domainId, firstSubjectId, facet.id, pawn, scope, true, false),
-                    Facet(domainId, secondSubjectId, facet.id, pawn, scope, true, false))));
+            return KnowledgeComparisonService.Compare(domainId, firstSubjectId, secondSubjectId, pawn, scope);
         }
     }
 }

@@ -12,11 +12,12 @@ namespace KnowledgeFrameworkBridgeAdapter
         {
             "KF_V2_STATE|R|Inspect registered schemas and selected pawn state",
             "KF_V2_VALIDATE|R|Inspect validation issues and runtime diagnostics",
+            "KF_V3_STATE|R|Inspect claims, contexts, milestones, relations, and capability versions",
             "KF_V2_VERIFY|W|Run the bounded V2 verification suite in the sandbox"
         };
 
         public static string BridgeAdapterInfo() =>
-            "KnowledgeFramework|2.0.0|Bounded V2 schema, transaction, persistence, insight, relationship, and compatibility probes.";
+            "KnowledgeFramework|3.0.0|Versioned V3 claims, contexts, recipes, milestones, structural relations, migration, and compatibility probes.";
 
         public static List<string> ExecuteBridgeCommand(string command, string argument, Map map)
         {
@@ -24,6 +25,7 @@ namespace KnowledgeFrameworkBridgeAdapter
             {
                 case "KF_V2_STATE": return State(map, argument);
                 case "KF_V2_VALIDATE": return Validate();
+                case "KF_V3_STATE": return V3State(map, argument);
                 case "KF_V2_VERIFY": return Verify(map, argument);
                 default: return null;
             }
@@ -67,10 +69,34 @@ namespace KnowledgeFrameworkBridgeAdapter
                 "personalFacetRecords=" + diagnostics.personalFacetRecords,
                 "colonyFacetRecords=" + diagnostics.colonyFacetRecords,
                 "expertiseRecords=" + diagnostics.expertiseRecords,
+                "claims=" + diagnostics.claimCount + " measurements=" + diagnostics.measurementCount + " contexts=" + diagnostics.contextCount,
+                "milestones=" + diagnostics.milestoneCount + " relations=" + diagnostics.relationCount + " accrualKeys=" + diagnostics.accrualPolicyKeyCount,
                 "persistentBytes=" + diagnostics.approximatePersistentBytes,
                 "cacheHits=" + diagnostics.cacheHits + " cacheMisses=" + diagnostics.cacheMisses
             };
             result.AddRange(issues.Take(50).Select(issue => "issue=" + Clean(issue.ToString())));
+            return result;
+        }
+
+        private static List<string> V3State(Map map, string argument)
+        {
+            Pawn pawn = Pawn(map, argument);
+            List<string> result = new List<string>
+            {
+                "apiVersion=" + KnowledgeFrameworkApi.ApiVersion,
+                "claimsVersion=" + KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.ClaimsCapability),
+                "contextsVersion=" + KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.ContextsCapability),
+                "milestonesVersion=" + KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.MilestonesCapability),
+                "relationsVersion=" + KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.StructuralRelationsCapability),
+                "comparisonVersion=" + KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.StructuredComparisonCapability)
+            };
+            KnowledgeDiagnosticsSnapshot diagnostics = KnowledgeDiagnostics.Snapshot();
+            result.Add("claims=" + diagnostics.claimCount + " measurements=" + diagnostics.measurementCount + " contexts=" + diagnostics.contextCount);
+            result.Add("milestones=" + diagnostics.milestoneCount + " relations=" + diagnostics.relationCount + " accrualKeys=" + diagnostics.accrualPolicyKeyCount);
+            if (pawn != null)
+                foreach (KnowledgeSchema schema in KnowledgeRegistry.SchemasSnapshot)
+                    result.Add("schema=" + schema.id + " applicableSubjects=" + KnowledgeRegistry.Subjects(schema.id).Count(subject => KnowledgeRegistry.ApplicableFacets(schema.id, subject.id).Count > 0)
+                        + " personalClaims=" + KnowledgeQuery.PersonalFacets(schema.id, pawn).Sum(facet => KnowledgeClaimService.ForSubject(schema.id, facet.subjectId, facet.facetId, pawn).Count));
             return result;
         }
 
