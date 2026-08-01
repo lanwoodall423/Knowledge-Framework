@@ -192,6 +192,36 @@ namespace KnowledgeFramework
             KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subject.id, pawn, scope);
             Widgets.Label(new Rect(inner.x, inner.y + 38f, inner.width, 24f), "KnowledgeFramework_StageValue".Translate(state.stageId ?? "KnowledgeFramework_Unknown".Translate()));
             float y = inner.y + 68f;
+            IKnowledgeDomainUiV3 v3Provider = KnowledgeV3Ui.Provider(schema.id);
+            if (v3Provider != null)
+            {
+                KnowledgeBrowserRow browserRow = KnowledgeBrowserModels.Build(new KnowledgeBrowserFilter
+                {
+                    domainId = schema.id,
+                    pawn = pawn,
+                    scope = scope,
+                    search = subject.id,
+                    includeUnknown = true,
+                    includeArchived = true,
+                    includeHidden = true,
+                    includeMissingContent = true
+                }).FirstOrDefault();
+                if (browserRow != null)
+                {
+                    List<string> badges = v3Provider.ListBadges(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
+                    List<string> columns = v3Provider.ListColumns(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
+                    Rect providerRect = new Rect(inner.x, y, inner.width, 72f);
+                    v3Provider.DrawDetailPanels(providerRect, browserRow, pawn, scope);
+                    if (badges.Count > 0 || columns.Count > 0)
+                    {
+                        GUI.color = Color.gray;
+                        Widgets.Label(new Rect(providerRect.x + 8f, providerRect.y + 44f, providerRect.width - 16f, 22f),
+                            string.Join("  |  ", badges.Concat(columns)));
+                        GUI.color = Color.white;
+                    }
+                    y += 82f;
+                }
+            }
             IReadOnlyList<KnowledgeFacetSchema> applicableFacets = KnowledgeRegistry.ApplicableFacets(schema.id, subject.id);
             List<KnowledgeRelationshipSnapshot> relationships = applicableFacets.SelectMany(facet => KnowledgeQuery.Relationships(
                 schema.id, subject.id, facet.id, pawn, scope)).ToList();

@@ -794,6 +794,9 @@ namespace KnowledgeFramework
         public float firstConfidence;
         public float secondConfidence;
         public string summary;
+        public IReadOnlyList<KnowledgeClaimValue> values;
+        public IReadOnlyList<bool> knownValues;
+        public IReadOnlyList<float> confidences;
     }
 
     public sealed class KnowledgeComparisonSchema

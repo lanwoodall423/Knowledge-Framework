@@ -39,20 +39,32 @@ namespace KnowledgeFramework
         public readonly IReadOnlyList<KnowledgeFacetSchema> applicableFacets;
         public readonly float completeness;
         public readonly float confidence;
+        public readonly int evidenceCount;
+        public readonly int recencyTick;
+        public readonly bool usedContextFallback;
+        public readonly KnowledgeContextKey requestedContext;
+        public readonly KnowledgeContextKey resolvedContext;
         public readonly string lastStage;
         public readonly IReadOnlyList<KnowledgeMilestoneState> milestones;
         public readonly IReadOnlyList<KnowledgeSubjectRelation> relations;
         public readonly IReadOnlyList<string> badges;
 
         internal KnowledgeBrowserRow(KnowledgeSubjectSnapshot subject, KnowledgeSubjectSnapshotV2 state,
-            IEnumerable<KnowledgeFacetSchema> applicableFacets, float completeness, float confidence,
-            IEnumerable<KnowledgeMilestoneState> milestones, IEnumerable<KnowledgeSubjectRelation> relations, IEnumerable<string> badges)
+            IEnumerable<KnowledgeFacetSchema> applicableFacets, float completeness, float confidence, int evidenceCount,
+            int recencyTick, bool usedContextFallback, IEnumerable<KnowledgeMilestoneState> milestones,
+            IEnumerable<KnowledgeSubjectRelation> relations, IEnumerable<string> badges,
+            KnowledgeContextKey requestedContext, KnowledgeContextKey resolvedContext)
         {
             this.subject = subject;
             this.state = state;
             this.applicableFacets = new ReadOnlyCollection<KnowledgeFacetSchema>((applicableFacets ?? Enumerable.Empty<KnowledgeFacetSchema>()).ToList());
             this.completeness = completeness;
             this.confidence = confidence;
+            this.evidenceCount = evidenceCount;
+            this.recencyTick = recencyTick;
+            this.usedContextFallback = usedContextFallback;
+            this.requestedContext = requestedContext;
+            this.resolvedContext = resolvedContext;
             lastStage = state.stageId;
             this.milestones = new ReadOnlyCollection<KnowledgeMilestoneState>((milestones ?? Enumerable.Empty<KnowledgeMilestoneState>()).ToList());
             this.relations = new ReadOnlyCollection<KnowledgeSubjectRelation>((relations ?? Enumerable.Empty<KnowledgeSubjectRelation>()).ToList());
@@ -79,20 +91,36 @@ namespace KnowledgeFramework
                 if (!filter.facetId.NullOrEmpty() && !facets.Any(item => item.id == filter.facetId)) continue;
                 KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subject.id, filter.pawn, filter.scope);
                 KnowledgeFacetSnapshotV2[] values = facets.Select(item => KnowledgeQuery.Facet(schema.id, subject.id, item.id, filter.pawn, filter.scope,
-                    true, false, filter.context, KnowledgeContextFallbackMode.ParentThenGlobal)).ToArray();
-                float completeness = values.Length == 0 ? 0f : values.Average(item => item.completeness);
-                float confidence = values.Length == 0 ? 0f : values.Max(item => item.confidence);
+                    true, true, filter.context, KnowledgeContextFallbackMode.ParentThenGlobal)).ToArray();
+                float[] weights = facets.Select(item => Math.Max(1f, item.completenessAmount)).ToArray();
+                float totalWeight = weights.Sum();
+                float completeness = values.Length == 0 || totalWeight <= 0f ? 0f :
+                    values.Select((item, index) => item.completeness * weights[index]).Sum() / totalWeight;
+                float confidenceWeight = values.Select((item, index) => item.evidenceCount > 0
+                    ? Math.Max(0.25f, item.completeness) * weights[index] : 0f).Sum();
+                float confidence = values.Length == 0 || confidenceWeight <= 0f ? 0f :
+                    values.Select((item, index) => item.evidenceCount > 0
+                        ? item.confidence * Math.Max(0.25f, item.completeness) * weights[index] : 0f).Sum() / confidenceWeight;
+                int recency = values.Select(item => item.lastTick).Concat(values.SelectMany(item =>
+                    item.provenance ?? Array.Empty<KnowledgeProvenanceSnapshot>()).Select(item => item.tick))
+                    .DefaultIfEmpty(0).Max();
+                int evidenceCount = values.Sum(item => item.evidenceCount);
+                bool usedFallback = values.Any(item => item.usedContextFallback);
+                KnowledgeContextKey resolvedContext = values.Select(item => item.context)
+                    .FirstOrDefault(value => !value.IsEmpty);
                 if (!filter.includeUnknown && state.stageId.NullOrEmpty() && completeness <= 0f) continue;
-                result.Add(new KnowledgeBrowserRow(subject, state, facets, completeness, confidence,
+                result.Add(new KnowledgeBrowserRow(subject, state, facets, completeness, confidence, evidenceCount, recency, usedFallback,
                     KnowledgeMilestoneService.States(schema.id, subject.id, filter.pawn, filter.context),
                     KnowledgeRelationService.Query(schema.id, subject.id, true, true, filter.context),
-                    subject.state == KnowledgeSubjectState.Archived ? new[] { "archived" } : subject.state == KnowledgeSubjectState.MissingContent ? new[] { "missing" } : null));
+                    subject.state == KnowledgeSubjectState.Archived ? new[] { "archived" } : subject.state == KnowledgeSubjectState.MissingContent ? new[] { "missing" } : null,
+                    filter.context, resolvedContext));
             }
             switch (filter.sort)
             {
                 case KnowledgeBrowserSort.Stage: return result.OrderByDescending(item => schema.Stage(item.state.stageId)?.order ?? int.MinValue).ThenBy(item => item.subject.label).ToList();
                 case KnowledgeBrowserSort.Confidence: return result.OrderByDescending(item => item.confidence).ThenBy(item => item.subject.label).ToList();
                 case KnowledgeBrowserSort.Completeness: return result.OrderByDescending(item => item.completeness).ThenBy(item => item.subject.label).ToList();
+                case KnowledgeBrowserSort.Recency: return result.OrderByDescending(item => item.recencyTick).ThenBy(item => item.subject.label).ToList();
                 default: return result.OrderBy(item => item.subject.label).ThenBy(item => item.subject.id).ToList();
             }
         }

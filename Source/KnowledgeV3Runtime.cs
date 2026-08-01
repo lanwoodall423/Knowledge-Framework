@@ -786,6 +786,9 @@ namespace KnowledgeFramework
             if (input == null) return null;
             if ((policy.uniquePerSourceInstance || policy.uniquePerPawnAndSourceInstance) && input.sourceInstanceId.NullOrEmpty()) return null;
             List<string> parts = new List<string> { input.domainId, input.subjectId };
+            // A recipe expands into one observation per facet. Keep those outcomes
+            // independent while preserving idempotency for repeated source events.
+            if (!input.facetId.NullOrEmpty()) parts.Add(input.facetId);
             if (policy.uniquePerPawnAndSourceInstance) parts.Add((input.observer?.thingIDNumber ?? 0).ToString());
             if (policy.uniquePerSourceInstance) parts.Add(input.sourceInstanceId ?? string.Empty);
             if (policy.uniquePerSubjectAndContext) parts.Add(KnowledgeV3Runtime.ContextFor(input).ToString());

@@ -27,6 +27,9 @@ namespace KnowledgeFramework
             return true;
         }
 
+        public static KnowledgeComparisonSchema Schema(string id) =>
+            !id.NullOrEmpty() && Schemas.TryGetValue(id, out KnowledgeComparisonSchema value) ? value : null;
+
         public static KnowledgeComparisonSnapshot Compare(string domainId, string firstSubjectId, string secondSubjectId,
             Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey))
         {
@@ -77,11 +80,80 @@ namespace KnowledgeFramework
         public static KnowledgeStructuredComparisonSnapshot CompareMany(string domainId, IReadOnlyList<string> subjectIds,
             Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey))
         {
-            if (subjectIds == null || subjectIds.Count < 2) return new KnowledgeStructuredComparisonSnapshot(domainId, subjectIds, null);
-            string first = subjectIds[0];
-            string second = subjectIds[1];
-            KnowledgeComparisonSnapshot pair = Compare(domainId, first, second, pawn, scope, context);
-            return new KnowledgeStructuredComparisonSnapshot(domainId, subjectIds, pair.rows);
+            List<string> ids = (subjectIds ?? Array.Empty<string>()).Where(value => !value.NullOrEmpty()).Distinct().ToList();
+            if (ids.Count < 2) return new KnowledgeStructuredComparisonSnapshot(domainId, ids, null);
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
+            if (schema == null) return new KnowledgeStructuredComparisonSnapshot(domainId, ids, null);
+            List<KnowledgeComparisonSchema> comparisons = ids.Select(value => ComparisonFor(domainId, value))
+                .Where(value => value != null).GroupBy(value => value.id).Select(group => group.First()).ToList();
+            IEnumerable<string> facetIds = comparisons.SelectMany(value => value.facetIds ?? new List<string>())
+                .Where(value => !value.NullOrEmpty()).Distinct();
+            if (!facetIds.Any()) facetIds = schema.facets.Select(value => value.id);
+            List<string> comparisonClaimIds = comparisons.SelectMany(value => value.claimIds ?? new List<string>())
+                .Where(value => !value.NullOrEmpty()).Distinct().ToList();
+            IEnumerable<KnowledgeClaimDef> claims = comparisonClaimIds.Count > 0
+                ? schema.claims.Where(value => comparisonClaimIds.Contains(value.StableId))
+                : ids.SelectMany(value => KnowledgeRegistry.ApplicableFacets(domainId, value)
+                    .SelectMany(facet => KnowledgeRegistry.ApplicableClaims(domainId, value, facet.id)))
+                    .GroupBy(value => value.StableId).Select(group => group.First());
+            List<KnowledgeComparisonRow> rows = new List<KnowledgeComparisonRow>();
+            foreach (string facetId in facetIds.Distinct())
+            {
+                List<KnowledgeFacetSnapshotV2> values = ids.Select(value => KnowledgeQuery.Facet(domainId, value, facetId, pawn,
+                    scope, true, false, context, KnowledgeContextFallbackMode.ParentThenGlobal)).ToList();
+                rows.Add(new KnowledgeComparisonRow
+                {
+                    id = "facet:" + facetId,
+                    label = schema.Facet(facetId)?.label ?? facetId,
+                    kind = KnowledgeComparisonRowKind.Facet,
+                    firstKnown = values[0].amount > 0f,
+                    secondKnown = values[1].amount > 0f,
+                    firstValue = KnowledgeClaimValue.Float(values[0].amount),
+                    secondValue = KnowledgeClaimValue.Float(values[1].amount),
+                    firstConfidence = values[0].confidence,
+                    secondConfidence = values[1].confidence,
+                    values = values.Select(value => KnowledgeClaimValue.Float(value.amount)).ToList(),
+                    knownValues = values.Select(value => value.amount > 0f).ToList(),
+                    confidences = values.Select(value => value.confidence).ToList(),
+                    summary = string.Join(" | ", values.Select(value => value.amount.ToString("0.##")))
+                });
+            }
+            foreach (KnowledgeClaimDef claim in claims.GroupBy(value => value.StableId).Select(group => group.First()))
+            {
+                List<KnowledgeClaimSnapshot> values = ids.Select(value => KnowledgeClaimService.Snapshot(domainId, value, claim.facetId,
+                    claim.StableId, pawn, scope, context, KnowledgeContextFallbackMode.ParentThenGlobal)).ToList();
+                rows.Add(new KnowledgeComparisonRow
+                {
+                    id = "claim:" + claim.StableId,
+                    label = claim.LabelCap,
+                    kind = KnowledgeComparisonRowKind.Claim,
+                    firstKnown = values[0].observationCount > 0,
+                    secondKnown = values[1].observationCount > 0,
+                    firstValue = values[0].value,
+                    secondValue = values[1].value,
+                    firstConfidence = values[0].effectiveConfidence,
+                    secondConfidence = values[1].effectiveConfidence,
+                    values = values.Select(value => value.value).ToList(),
+                    knownValues = values.Select(value => value.observationCount > 0).ToList(),
+                    confidences = values.Select(value => value.effectiveConfidence).ToList(),
+                    summary = string.Join(" | ", values.Select(value => value.value?.StableKey() ?? "unknown"))
+                });
+            }
+            string providerId = KnowledgeRegistry.ResolveSubject(domainId, ids[0])?.sourceDef?.defName;
+            if (!providerId.NullOrEmpty() && Providers.TryGetValue(providerId, out KnowledgeComparisonRowProvider provider))
+            {
+                try { rows.AddRange(provider(domainId, ids, pawn, scope, context) ?? Enumerable.Empty<KnowledgeComparisonRow>()); }
+                catch (Exception exception) { KnowledgeLog.ErrorOnce("comparison-provider:" + providerId, "A comparison provider failed.", exception); }
+            }
+            return new KnowledgeStructuredComparisonSnapshot(domainId, ids, rows);
+        }
+
+        private static KnowledgeComparisonSchema ComparisonFor(string domainId, string subjectId)
+        {
+            KnowledgeSubjectSnapshot subject = KnowledgeRegistry.ResolveSubject(domainId, subjectId);
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
+            string comparisonId = schema?.Archetype(subject?.archetypeId)?.comparisonSchemaId;
+            return Schema(comparisonId);
         }
     }
 }

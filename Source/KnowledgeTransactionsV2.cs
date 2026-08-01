@@ -88,6 +88,9 @@ namespace KnowledgeFramework
         public readonly int successCount;
         public readonly int failureCount;
         public readonly int revision;
+        public readonly int lastTick;
+        public readonly KnowledgeContextKey context;
+        public readonly bool usedContextFallback;
         public readonly IReadOnlyList<KnowledgeEvidenceAggregateSnapshot> aggregates;
         public readonly IReadOnlyList<KnowledgeProvenanceSnapshot> provenance;
         private readonly IReadOnlyDictionary<string, int> eventCounts;
@@ -111,6 +114,9 @@ namespace KnowledgeFramework
             this.successCount = successCount;
             this.failureCount = failureCount;
             this.revision = revision;
+            lastTick = 0;
+            context = KnowledgeContextKey.Empty;
+            usedContextFallback = false;
             eventCounts = counts == null || counts.Count == 0
                 ? EmptyEventCounts
                 : new ReadOnlyDictionary<string, int>(new Dictionary<string, int>(counts, StringComparer.Ordinal));
@@ -127,6 +133,19 @@ namespace KnowledgeFramework
         {
             this.aggregates = new ReadOnlyCollection<KnowledgeEvidenceAggregateSnapshot>((aggregates ?? Enumerable.Empty<KnowledgeEvidenceAggregateSnapshot>()).ToList());
             this.provenance = new ReadOnlyCollection<KnowledgeProvenanceSnapshot>((provenance ?? Enumerable.Empty<KnowledgeProvenanceSnapshot>()).ToList());
+        }
+
+        internal KnowledgeFacetSnapshotV2(string domainId, string subjectId, string facetId, Pawn pawn, KnowledgeScope scope,
+            float directAmount, float derivedAmount, float completeness, float confidence, bool provisional,
+            int evidenceCount, int successCount, int failureCount, int revision, IDictionary<string, int> counts,
+            IEnumerable<KnowledgeEvidenceAggregateSnapshot> aggregates, IEnumerable<KnowledgeProvenanceSnapshot> provenance,
+            KnowledgeContextKey context, bool usedContextFallback, int lastTick = 0)
+            : this(domainId, subjectId, facetId, pawn, scope, directAmount, derivedAmount, completeness, confidence, provisional,
+                evidenceCount, successCount, failureCount, revision, counts, aggregates, provenance)
+        {
+            this.lastTick = lastTick;
+            this.context = context;
+            this.usedContextFallback = usedContextFallback;
         }
 
         public int EventCount(string eventId) => !eventId.NullOrEmpty() && eventCounts.TryGetValue(eventId, out int value) ? value : 0;
@@ -744,7 +763,21 @@ namespace KnowledgeFramework
                 record?.evidenceCount ?? 0, record?.successCount ?? 0, record?.failureCount ?? 0,
                 record?.revision ?? 0, includeEvidenceDetails ? record?.eventCounts : null,
                 includeEvidenceDetails ? record?.aggregates?.Select(item => new KnowledgeEvidenceAggregateSnapshot(item)) : null,
-                includeEvidenceDetails ? record?.provenance?.Select(item => new KnowledgeProvenanceSnapshot(item)) : null);
+                includeEvidenceDetails ? record?.provenance?.Select(item => new KnowledgeProvenanceSnapshot(item)) : null,
+                KnowledgeContextKey.Empty, false, LatestEvidenceTick(record));
+        }
+
+        private static int LatestEvidenceTick(KnowledgeFacetStateRecord record)
+        {
+            if (record == null) return 0;
+            int latest = 0;
+            if (record.aggregates != null)
+                for (int i = 0; i < record.aggregates.Count; i++)
+                    if (record.aggregates[i] != null) latest = Math.Max(latest, record.aggregates[i].lastTick);
+            if (record.provenance != null)
+                for (int i = 0; i < record.provenance.Count; i++)
+                    if (record.provenance[i] != null) latest = Math.Max(latest, record.provenance[i].tick);
+            return latest;
         }
 
         public static KnowledgeSubjectSnapshotV2 Subject(string domainId, string subjectId, Pawn pawn = null,
