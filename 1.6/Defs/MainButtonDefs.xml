@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Defs>
+  <MainButtonDef>
+    <defName>KnowledgeFramework_MainButton</defName>
+    <label>KnowledgeFramework_Title</label>
+    <description>KnowledgeFramework_ColonyBrowserDescription</description>
+    <tabWindowClass>KnowledgeFramework.MainTabWindow_Knowledge</tabWindowClass>
+    <order>78</order>
+    <closesWorldView>true</closesWorldView>
+  </MainButtonDef>
+</Defs>

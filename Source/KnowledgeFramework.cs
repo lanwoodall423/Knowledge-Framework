@@ -177,7 +177,8 @@ namespace KnowledgeFramework
             new Color(0.86f, 0.76f, 0.44f)
         };
 
-        public static bool VisibleFor(Pawn pawn) => pawn?.Faction?.def?.isPlayer == true && pawn.RaceProps?.Humanlike == true &&
+        public static bool VisibleFor(Pawn pawn) => (KnowledgeFrameworkMod.Settings?.BioPanelEnabled ?? true) &&
+            pawn?.Faction?.def?.isPlayer == true && pawn.RaceProps?.Humanlike == true &&
             KnowledgeProviderRegistry.EntriesFor(pawn).Count > 0;
 
         internal static void ResetGameState() => expandedPawns.Clear();
@@ -199,13 +200,13 @@ namespace KnowledgeFramework
             Rect header = new Rect(panel.x + 6f, panel.y + 2f, panel.width - 12f, HeaderHeight - 4f);
             bool expanded = expandedPawns.Contains(pawn.thingIDNumber);
             Widgets.DrawHighlightIfMouseover(header);
-            Widgets.Label(new Rect(header.x + 6f, header.y + 2f, header.width - 44f, 24f), "Knowledge & Expertise");
+            Widgets.Label(new Rect(header.x + 6f, header.y + 2f, header.width - 44f, 24f), "KnowledgeFramework_Title".Translate());
             Text.Anchor = TextAnchor.MiddleRight;
             GUI.color = Color.gray;
             Widgets.Label(new Rect(header.xMax - 42f, header.y, 36f, 24f), expanded ? "-" : "+");
             GUI.color = Color.white;
             Text.Anchor = TextAnchor.UpperLeft;
-            TooltipHandler.TipRegion(header, expanded ? "Collapse knowledge and expertise." : "Expand knowledge and expertise.");
+            TooltipHandler.TipRegion(header, expanded ? "KnowledgeFramework_Collapse".Translate() : "KnowledgeFramework_Expand".Translate());
             if (Widgets.ButtonInvisible(header))
             {
                 if (expanded) expandedPawns.Remove(pawn.thingIDNumber);
@@ -225,12 +226,12 @@ namespace KnowledgeFramework
             Widgets.Label(new Rect(rect.x + 38f, rect.y + 3f, 138f, 23f), entry.label);
             Text.Anchor = TextAnchor.MiddleRight;
             GUI.color = rankColor;
-            Widgets.Label(new Rect(rect.x + 178f, rect.y + 2f, 76f, 23f), entry.rank.ToString());
+            Widgets.Label(new Rect(rect.x + 178f, rect.y + 2f, 76f, 23f), KnowledgeBrowserLabels.Rank(entry.rank));
             GUI.color = Color.gray;
             Widgets.Label(new Rect(rect.x + 258f, rect.y + 2f, rect.width - 264f, 23f), entry.summary ?? string.Empty);
             GUI.color = Color.white;
             Text.Anchor = TextAnchor.UpperLeft;
-            TooltipHandler.TipRegion(rect, entry.tooltip ?? (entry.label + " - " + entry.rank));
+            TooltipHandler.TipRegion(rect, entry.tooltip ?? (entry.label + " - " + KnowledgeBrowserLabels.Rank(entry.rank)));
             if (entry.openDetails != null && Widgets.ButtonInvisible(rect)) entry.openDetails();
         }
     }

@@ -46,4 +46,20 @@
   <KnowledgeFramework_Milestones>Milestones</KnowledgeFramework_Milestones>
   <KnowledgeFramework_InsightReady>{0}: ready</KnowledgeFramework_InsightReady>
   <KnowledgeFramework_InsightProgress>{0}: {1} requirements unmet</KnowledgeFramework_InsightProgress>
+  <KnowledgeFramework_GlobalContext>Global context</KnowledgeFramework_GlobalContext>
+  <KnowledgeFramework_ContextValue>Context: {0}</KnowledgeFramework_ContextValue>
+  <KnowledgeFramework_ContextFallback>Context: {0} (using {1})</KnowledgeFramework_ContextFallback>
+  <KnowledgeFramework_RelationshipDetail>{0} with {1}: {2} confidence</KnowledgeFramework_RelationshipDetail>
+  <KnowledgeFramework_RequirementsUnmet>{0} requirements remain for the next stage.</KnowledgeFramework_RequirementsUnmet>
+  <KnowledgeFramework_Archived>Archived</KnowledgeFramework_Archived>
+  <KnowledgeFramework_Hidden>Hidden</KnowledgeFramework_Hidden>
+  <KnowledgeFramework_MissingContent>Missing content</KnowledgeFramework_MissingContent>
+  <KnowledgeFramework_EnableBioPanel>Show Knowledge &amp; Expertise on character cards</KnowledgeFramework_EnableBioPanel>
+  <KnowledgeFramework_EnableBioPanelTooltip>When disabled, the character-card panel and its reserved space are removed.</KnowledgeFramework_EnableBioPanelTooltip>
+  <KnowledgeFramework_ColonyBrowserDescription>Review knowledge and expertise shared by the colony without selecting a colonist.</KnowledgeFramework_ColonyBrowserDescription>
+  <KnowledgeFramework_OpenColonyBrowser>Open colony knowledge</KnowledgeFramework_OpenColonyBrowser>
+  <KnowledgeFramework_UnknownStage>Unknown stage</KnowledgeFramework_UnknownStage>
+  <KnowledgeFramework_RequirementKnowledge>Knowledge {0}</KnowledgeFramework_RequirementKnowledge>
+  <KnowledgeFramework_RequirementConfidence>Confidence {0}</KnowledgeFramework_RequirementConfidence>
+  <KnowledgeFramework_RequirementDocumentation>Documentation</KnowledgeFramework_RequirementDocumentation>
 </LanguageData>

@@ -152,6 +152,7 @@ namespace KnowledgeFramework
         public readonly string label;
         public readonly string description;
         public readonly bool expertiseEnabled;
+        public readonly KnowledgeStageAggregationMode stageAggregationMode;
         public readonly int sortOrder;
         public readonly KnowledgeRankThresholds knowledgeRanks;
         public readonly KnowledgeRankThresholds expertiseRanks;
@@ -163,12 +164,14 @@ namespace KnowledgeFramework
             KnowledgeRankThresholds knowledgeRanks = null, KnowledgeRankThresholds expertiseRanks = null,
             Func<string, KnowledgeSubjectDefinition> subjectResolver = null,
             Func<IEnumerable<KnowledgeSubjectDefinition>> subjectSource = null,
-            IDictionary<string, float> revealThresholds = null, int sortOrder = 0)
+            IDictionary<string, float> revealThresholds = null, int sortOrder = 0,
+            KnowledgeStageAggregationMode stageAggregationMode = KnowledgeStageAggregationMode.LegacySumMax)
         {
             this.id = id;
             this.label = label ?? id;
             this.description = description ?? string.Empty;
             this.expertiseEnabled = expertiseEnabled;
+            this.stageAggregationMode = stageAggregationMode;
             this.knowledgeRanks = knowledgeRanks ?? KnowledgeRankThresholds.Default;
             this.expertiseRanks = expertiseRanks ?? KnowledgeRankThresholds.Default;
             this.subjectResolver = subjectResolver;
@@ -336,6 +339,7 @@ namespace KnowledgeFramework
                 id = domain.id,
                 label = domain.label,
                 description = domain.description,
+                stageAggregationMode = domain.stageAggregationMode,
                 sharingModel = KnowledgeSharingModel.Custom,
                 sortOrder = domain.sortOrder,
                 expertiseTracks = track == null ? Array.Empty<KnowledgeExpertiseTrackDef>() : new[] { track },

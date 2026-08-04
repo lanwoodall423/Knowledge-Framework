@@ -18,6 +18,18 @@ namespace KnowledgeFramework
         Custom
     }
 
+    /// <summary>
+    /// Defines how a subject-wide discovery stage combines its applicable facets.
+    /// LegacySumMax preserves the V1/V2 raw sum/highest-confidence calculation.
+    /// Balanced normalizes facet progress to a 0-100 scale and uses a conservative,
+    /// evidence-aware confidence aggregate.
+    /// </summary>
+    public enum KnowledgeStageAggregationMode
+    {
+        LegacySumMax,
+        Balanced
+    }
+
     public enum KnowledgeEvidenceDisposition
     {
         Supporting,
@@ -66,7 +78,9 @@ namespace KnowledgeFramework
         Documentation,
         Milestone,
         EventCount,
+        [Obsolete("Context requirements are unsupported; use an explicit facet or claim requirement.")]
         Context,
+        [Obsolete("RelatedClaim requirements are unsupported; use ClaimExists, ClaimConfidence, or ClaimValue.")]
         RelatedClaim
     }
 
@@ -234,6 +248,7 @@ namespace KnowledgeFramework
     public sealed class KnowledgeTransmissionDef : Def
     {
         public string domainId;
+        [Obsolete("Transmission model is unsupported; configure KnowledgeDomainDef.sharingModel.")]
         public KnowledgeSharingModel model;
         public float knowledgeEfficiency = 1f;
         public float confidenceEfficiency = 0.8f;
@@ -269,6 +284,10 @@ namespace KnowledgeFramework
         public bool enableUncertainty;
         public bool enableFamiliarity;
         public KnowledgeSharingModel sharingModel = KnowledgeSharingModel.Reportable;
+        // Legacy is the safe default for existing V2 Def consumers. New V3 Defs
+        // should opt into Balanced explicitly until their compatibility boundary
+        // is known to the framework.
+        public KnowledgeStageAggregationMode stageAggregationMode = KnowledgeStageAggregationMode.LegacySumMax;
         public int sortOrder;
         public int provenanceLimit = 16;
         public int evidenceAggregateLimit = 128;
@@ -318,6 +337,9 @@ namespace KnowledgeFramework
         public bool enableUncertainty;
         public bool enableFamiliarity;
         public KnowledgeSharingModel sharingModel = KnowledgeSharingModel.Reportable;
+        // Dynamic registrations are compatibility-ambiguous, so unspecified
+        // registrations retain the historical V1/V2 stage calculation.
+        public KnowledgeStageAggregationMode stageAggregationMode = KnowledgeStageAggregationMode.LegacySumMax;
         public int sortOrder;
         public int provenanceLimit = 16;
         public int evidenceAggregateLimit = 128;

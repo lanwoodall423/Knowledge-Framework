@@ -15,6 +15,14 @@ namespace KnowledgeFramework
         void DrawSubjectDetails(Rect rect, KnowledgeSubjectSnapshot subject, Pawn pawn, KnowledgeScope scope);
     }
 
+    public interface IKnowledgeDomainUiV2Contextual
+    {
+        IEnumerable<FloatMenuOption> SubjectActions(KnowledgeSubjectSnapshot subject, Pawn pawn, KnowledgeScope scope,
+            KnowledgeContextKey context);
+        void DrawSubjectDetails(Rect rect, KnowledgeSubjectSnapshot subject, Pawn pawn, KnowledgeScope scope,
+            KnowledgeContextKey context);
+    }
+
     public static class KnowledgeV2Ui
     {
         private static readonly Dictionary<string, IKnowledgeDomainUiV2> Providers = new Dictionary<string, IKnowledgeDomainUiV2>(StringComparer.Ordinal);
@@ -29,10 +37,11 @@ namespace KnowledgeFramework
 
         public static bool Unregister(string domainId) => !domainId.NullOrEmpty() && Providers.Remove(domainId);
 
-        public static void Open(string domainId = null, Pawn pawn = null, string subjectId = null)
+        public static void Open(string domainId = null, Pawn pawn = null, string subjectId = null,
+            KnowledgeContextKey context = default(KnowledgeContextKey))
         {
             if (Find.WindowStack == null) return;
-            Find.WindowStack.Add(new Window_KnowledgeBrowser(domainId, pawn, subjectId));
+            Find.WindowStack.Add(new Window_KnowledgeBrowser(domainId, pawn, subjectId, context));
         }
 
         internal static IKnowledgeDomainUiV2 Provider(string domainId) =>
@@ -63,20 +72,41 @@ namespace KnowledgeFramework
         private string domainId;
         private Pawn pawn;
         private string subjectId;
+        private KnowledgeContextKey context;
         private KnowledgeScope scope;
         private string search = string.Empty;
         private Vector2 subjectScroll;
         private Vector2 facetScroll;
         private int modelRevision = -1;
+        private int modelKnowledgeRevision = -1;
+        private int modelPawnId;
+        private KnowledgeScope modelScope;
+        private KnowledgeContextKey modelContext;
+        private string modelDomain;
         private List<KnowledgeSubjectSnapshot> subjects = new List<KnowledgeSubjectSnapshot>();
+        private Dictionary<string, KnowledgeRevealResult> subjectPresentations = new Dictionary<string, KnowledgeRevealResult>(StringComparer.Ordinal);
+        private KnowledgeBrowserRow detailModel;
+        private int detailKnowledgeRevision = -1;
+        private int detailUiRevision = -1;
+        private int detailPawnId;
+        private KnowledgeScope detailScope;
+        private string detailDomain;
+        private string detailSubject;
+        private KnowledgeContextKey detailContext;
 
         public override Vector2 InitialSize => new Vector2(Mathf.Min(1100f, UI.screenWidth * 0.92f), Mathf.Min(760f, UI.screenHeight * 0.9f));
 
-        public Window_KnowledgeBrowser(string domainId, Pawn pawn, string subjectId)
+        internal KnowledgeContextKey RequestedContext => context;
+        internal KnowledgeScope SelectedScope => scope;
+
+        public Window_KnowledgeBrowser(string domainId, Pawn pawn, string subjectId,
+            KnowledgeContextKey context = default(KnowledgeContextKey), KnowledgeScope scope = KnowledgeScope.Personal)
         {
             this.domainId = domainId;
             this.pawn = pawn;
             this.subjectId = subjectId;
+            this.context = context;
+            this.scope = scope;
             doCloseX = true;
             doCloseButton = false;
             absorbInputAroundWindow = false;
@@ -114,6 +144,9 @@ namespace KnowledgeFramework
                     domainId = item.id;
                     subjectId = null;
                     modelRevision = -1;
+                    modelKnowledgeRevision = -1;
+                    modelDomain = null;
+                    detailModel = null;
                 })).ToList();
                 Find.WindowStack.Add(new FloatMenu(options));
             }
@@ -142,13 +175,23 @@ namespace KnowledgeFramework
             Widgets.DrawMenuSection(rect);
             Rect inner = rect.ContractedBy(8f);
             search = Widgets.TextField(new Rect(inner.x, inner.y, inner.width, 30f), search ?? string.Empty);
-            if (modelRevision != KnowledgeUiCache.Revision)
+            int knowledgeRevision = KnowledgeQuery.Revision;
+            int uiRevision = KnowledgeUiCache.Revision;
+            int pawnId = pawn?.thingIDNumber ?? 0;
+            if (modelRevision != uiRevision || modelKnowledgeRevision != knowledgeRevision || modelDomain != schema.id ||
+                modelPawnId != pawnId || modelScope != scope || !modelContext.Equals(context))
             {
                 subjects = KnowledgeRegistry.Subjects(schema.id).ToList();
-                modelRevision = KnowledgeUiCache.Revision;
+                subjectPresentations = subjects.ToDictionary(item => item.id, item => KnowledgeDiscovery.Present(schema.id, item.id, null,
+                    pawn, scope, context, KnowledgeContextFallbackMode.ParentThenGlobal), StringComparer.Ordinal);
+                modelRevision = uiRevision;
+                modelKnowledgeRevision = knowledgeRevision;
+                modelDomain = schema.id;
+                modelPawnId = pawnId;
+                modelScope = scope;
+                modelContext = context;
             }
-            List<KnowledgeSubjectSnapshot> filtered = subjects.Where(item => search.NullOrEmpty() ||
-                item.label.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0).ToList();
+            List<KnowledgeSubjectSnapshot> filtered = subjects.Where(item => SubjectVisibleInList(item, search)).ToList();
             Rect outer = new Rect(inner.x, inner.y + 38f, inner.width, inner.height - 38f);
             Rect view = new Rect(0f, 0f, outer.width - 16f, Math.Max(outer.height, filtered.Count * 42f));
             Widgets.BeginScrollView(outer, ref subjectScroll, view);
@@ -159,15 +202,14 @@ namespace KnowledgeFramework
                 for (int i = first; i < last; i++)
                 {
                     KnowledgeSubjectSnapshot subject = filtered[i];
-                    KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subject.id, pawn, scope);
-                    bool identified = !state.stageId.NullOrEmpty() || schema.stages.Count == 0 || KnowledgeQuery.Facet(schema.id, subject.id,
-                        null, pawn, scope).amount > 0f;
+                    KnowledgeRevealResult presentation = subjectPresentations[subject.id];
                     Rect row = new Rect(0f, i * 42f, view.width, 38f);
                     if (subject.id == subjectId) Widgets.DrawHighlightSelected(row); else Widgets.DrawHighlightIfMouseover(row);
-                    Widgets.Label(new Rect(row.x + 5f, row.y + 3f, row.width - 10f, 22f), identified ? subject.label :
-                        (subject.unidentifiedLabel.NullOrEmpty() ? "KnowledgeFramework_Unidentified".Translate() : subject.unidentifiedLabel));
+                    Widgets.Label(new Rect(row.x + 5f, row.y + 3f, row.width - 10f, 22f),
+                        KnowledgeBrowserLabels.SubjectLabel(subject, presentation));
                     GUI.color = Color.gray;
-                    Widgets.Label(new Rect(row.x + 5f, row.y + 21f, row.width - 10f, 17f), state.stageId ?? "KnowledgeFramework_Unknown".Translate());
+                    Widgets.Label(new Rect(row.x + 5f, row.y + 21f, row.width - 10f, 17f),
+                        KnowledgeBrowserLabels.Stage(schema, presentation.stageId));
                     GUI.color = Color.white;
                     if (Widgets.ButtonInvisible(row)) subjectId = subject.id;
                 }
@@ -176,61 +218,67 @@ namespace KnowledgeFramework
             if (filtered.Count == 0) Widgets.Label(outer.ContractedBy(8f), "KnowledgeFramework_NoMatches".Translate());
         }
 
+        private bool SubjectVisibleInList(KnowledgeSubjectSnapshot subject, string search)
+        {
+            if (subject == null || subject.state == KnowledgeSubjectState.Archived || subject.state == KnowledgeSubjectState.Retired ||
+                subject.state == KnowledgeSubjectState.Hidden || subject.state == KnowledgeSubjectState.MissingContent) return false;
+            if (!subjectPresentations.TryGetValue(subject.id, out KnowledgeRevealResult presentation)) return false;
+            if (!presentation.identified) return false;
+            if (search.NullOrEmpty()) return true;
+            return KnowledgeBrowserLabels.SubjectLabel(subject, presentation).IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0 ||
+                KnowledgeBrowserLabels.SubjectDescription(subject, presentation).IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
         private void DrawDetails(Rect rect, KnowledgeSchema schema)
         {
             Widgets.DrawMenuSection(rect);
             Rect inner = rect.ContractedBy(12f);
-            KnowledgeSubjectSnapshot subject = KnowledgeRegistry.ResolveSubject(schema.id, subjectId);
-            if (subject == null) { Widgets.Label(inner, "KnowledgeFramework_SelectSubject".Translate()); return; }
+            KnowledgeBrowserRow browserRow = DetailModel(schema);
+            if (browserRow == null) { Widgets.Label(inner, "KnowledgeFramework_SelectSubject".Translate()); return; }
+            KnowledgeSubjectSnapshot subject = browserRow.subject;
             Text.Font = GameFont.Medium;
-            Widgets.Label(new Rect(inner.x, inner.y, inner.width, 34f), subject.label);
+            Widgets.Label(new Rect(inner.x, inner.y, inner.width, 34f), browserRow.displayLabel);
             IKnowledgeDomainUiV2 provider = KnowledgeV2Ui.Provider(schema.id);
-            List<FloatMenuOption> actions = provider?.SubjectActions(subject, pawn, scope)?.Where(item => item != null).ToList();
+            IKnowledgeDomainUiV2Contextual contextualProvider = provider as IKnowledgeDomainUiV2Contextual;
+            List<FloatMenuOption> actions = (contextualProvider == null ? provider?.SubjectActions(subject, pawn, scope) :
+                contextualProvider.SubjectActions(subject, pawn, scope, context))?.Where(item => item != null).ToList();
             if (actions != null && actions.Count > 0 && Widgets.ButtonText(new Rect(inner.xMax - 92f, inner.y, 92f, 30f), "KnowledgeFramework_Actions".Translate()))
                 Find.WindowStack.Add(new FloatMenu(actions));
             Text.Font = GameFont.Small;
-            KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subject.id, pawn, scope);
-            Widgets.Label(new Rect(inner.x, inner.y + 38f, inner.width, 24f), "KnowledgeFramework_StageValue".Translate(state.stageId ?? "KnowledgeFramework_Unknown".Translate()));
-            float y = inner.y + 68f;
+            Widgets.Label(new Rect(inner.x, inner.y + 38f, inner.width, 24f), "KnowledgeFramework_StageValue".Translate(
+                KnowledgeBrowserLabels.Stage(schema, browserRow.currentStageId)));
+            string contextText = browserRow.usedContextFallback
+                ? "KnowledgeFramework_ContextFallback".Translate(KnowledgeBrowserLabels.Context(browserRow.requestedContext),
+                    KnowledgeBrowserLabels.Context(browserRow.resolvedContext))
+                : "KnowledgeFramework_ContextValue".Translate(KnowledgeBrowserLabels.Context(browserRow.requestedContext));
+            GUI.color = Color.gray;
+            Widgets.Label(new Rect(inner.x, inner.y + 62f, inner.width, 22f), contextText);
+            GUI.color = Color.white;
+            float y = inner.y + 88f;
             IKnowledgeDomainUiV3 v3Provider = KnowledgeV3Ui.Provider(schema.id);
             if (v3Provider != null)
             {
-                KnowledgeBrowserRow browserRow = KnowledgeBrowserModels.Build(new KnowledgeBrowserFilter
+                List<string> badges = v3Provider.ListBadges(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
+                List<string> columns = v3Provider.ListColumns(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
+                Rect providerRect = new Rect(inner.x, y, inner.width, 72f);
+                v3Provider.DrawDetailPanels(providerRect, browserRow, pawn, scope);
+                if (badges.Count > 0 || columns.Count > 0)
                 {
-                    domainId = schema.id,
-                    pawn = pawn,
-                    scope = scope,
-                    search = subject.id,
-                    includeUnknown = true,
-                    includeArchived = true,
-                    includeHidden = true,
-                    includeMissingContent = true
-                }).FirstOrDefault();
-                if (browserRow != null)
-                {
-                    List<string> badges = v3Provider.ListBadges(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
-                    List<string> columns = v3Provider.ListColumns(browserRow, pawn, scope)?.Where(value => !value.NullOrEmpty()).ToList() ?? new List<string>();
-                    Rect providerRect = new Rect(inner.x, y, inner.width, 72f);
-                    v3Provider.DrawDetailPanels(providerRect, browserRow, pawn, scope);
-                    if (badges.Count > 0 || columns.Count > 0)
-                    {
-                        GUI.color = Color.gray;
-                        Widgets.Label(new Rect(providerRect.x + 8f, providerRect.y + 44f, providerRect.width - 16f, 22f),
-                            string.Join("  |  ", badges.Concat(columns)));
-                        GUI.color = Color.white;
-                    }
-                    y += 82f;
+                    GUI.color = Color.gray;
+                    Widgets.Label(new Rect(providerRect.x + 8f, providerRect.y + 44f, providerRect.width - 16f, 22f),
+                        string.Join("  |  ", badges.Concat(columns)));
+                    GUI.color = Color.white;
                 }
+                y += 82f;
             }
-            IReadOnlyList<KnowledgeFacetSchema> applicableFacets = KnowledgeRegistry.ApplicableFacets(schema.id, subject.id);
-            List<KnowledgeRelationshipSnapshot> relationships = applicableFacets.SelectMany(facet => KnowledgeQuery.Relationships(
-                schema.id, subject.id, facet.id, pawn, scope)).ToList();
-            List<KnowledgeInsightProgress> insights = schema.insights.Select(insight => KnowledgeInsightService.Progress(
-                insight.defName, schema.id, subject.id, pawn, scope)).ToList();
+            IReadOnlyList<KnowledgeFacetSchema> applicableFacets = browserRow.applicableFacets;
+            List<KnowledgeSubjectRelation> relationships = browserRow.relations.ToList();
+            List<KnowledgeInsightProgress> insights = browserRow.insights.ToList();
             Rect outer = new Rect(inner.x, y, inner.width, inner.yMax - y);
-            List<KnowledgeClaimSnapshot> claims = applicableFacets.SelectMany(facet => KnowledgeClaimService.ForSubject(schema.id, subject.id, facet.id, pawn, scope)).ToList();
-            List<KnowledgeMilestoneState> milestones = KnowledgeMilestoneService.States(schema.id, subject.id, pawn).ToList();
-            float extraHeight = relationships.Count * 38f + insights.Count * 38f + claims.Count * 34f + milestones.Count * 30f + 80f;
+            List<KnowledgeClaimSnapshot> claims = browserRow.claims.ToList();
+            List<KnowledgeMilestoneState> milestones = browserRow.milestones.ToList();
+            float extraHeight = relationships.Count * 38f + insights.Count * 38f + claims.Count * 34f + milestones.Count * 42f +
+                (browserRow.unmetRequirementCount > 0 ? 30f : 0f) + 80f;
             Rect view = new Rect(0f, 0f, outer.width - 16f, Math.Max(outer.height, applicableFacets.Count * 72f + extraHeight));
             Widgets.BeginScrollView(outer, ref facetScroll, view);
             try
@@ -238,9 +286,9 @@ namespace KnowledgeFramework
                 for (int i = 0; i < applicableFacets.Count; i++)
                 {
                     KnowledgeFacetSchema facet = applicableFacets[i];
-                    KnowledgeFacetSnapshotV2 value = KnowledgeQuery.Facet(schema.id, subject.id, facet.id, pawn, scope);
+                    if (!browserRow.facetValues.TryGetValue(facet.id, out KnowledgeFacetSnapshotV2 value)) continue;
                     Rect row = new Rect(0f, i * 72f, view.width, 66f);
-                    Widgets.Label(new Rect(row.x, row.y, row.width * 0.5f, 24f), facet.label);
+                    Widgets.Label(new Rect(row.x, row.y, row.width * 0.5f, 24f), KnowledgeBrowserLabels.Facet(facet));
                     Widgets.FillableBar(new Rect(row.x, row.y + 28f, row.width, 22f), value.completeness);
                     Text.Anchor = TextAnchor.MiddleCenter;
                     Widgets.Label(new Rect(row.x, row.y + 28f, row.width, 22f), "KnowledgeFramework_KnowledgeAndConfidence".Translate(
@@ -255,10 +303,15 @@ namespace KnowledgeFramework
                     extraY += 26f;
                     for (int i = 0; i < relationships.Count; i++)
                     {
-                        KnowledgeRelationshipSnapshot relationship = relationships[i];
+                        KnowledgeSubjectRelation relationship = relationships[i];
+                        bool outgoing = relationship.fromSubjectId == subject.id && relationship.domainId == schema.id;
+                        string relatedDomain = outgoing ? relationship.toDomainId : relationship.domainId;
+                        string relatedSubject = outgoing ? relationship.toSubjectId : relationship.fromSubjectId;
+                        string relatedLabel = KnowledgeBrowserLabels.Subject(relatedDomain, relatedSubject, pawn, scope,
+                            relationship.context);
                         Widgets.Label(new Rect(4f, extraY + i * 38f, view.width, 32f),
-                            "KnowledgeFramework_RelationshipValue".Translate(relationship.fromSubjectId,
-                                relationship.derivedAmount.ToString("0.##"), relationship.derivedConfidence.ToStringPercent()));
+                            "KnowledgeFramework_RelationshipDetail".Translate(KnowledgeBrowserLabels.RelationType(relationship.relationTypeId),
+                                relatedLabel, relationship.confidence.ToStringPercent()));
                     }
                     extraY += relationships.Count * 38f;
                 }
@@ -270,8 +323,8 @@ namespace KnowledgeFramework
                     {
                         KnowledgeInsightProgress insight = insights[i];
                         Widgets.Label(new Rect(4f, extraY + i * 38f, view.width, 32f),
-                            insight.requirementsMet ? "KnowledgeFramework_InsightReady".Translate(insight.insightId) :
-                            "KnowledgeFramework_InsightProgress".Translate(insight.insightId, insight.unmetRequirements.Count));
+                            insight.requirementsMet ? "KnowledgeFramework_InsightReady".Translate(KnowledgeBrowserLabels.Insight(schema, insight.insightId)) :
+                            "KnowledgeFramework_InsightProgress".Translate(KnowledgeBrowserLabels.Insight(schema, insight.insightId), insight.unmetRequirements.Count));
                     }
                     extraY += insights.Count * 38f;
                 }
@@ -282,7 +335,8 @@ namespace KnowledgeFramework
                     foreach (KnowledgeClaimSnapshot claim in claims)
                     {
                         string value = claim.value == null ? "KnowledgeFramework_Unknown".Translate() : claim.value.ToString();
-                        Widgets.Label(new Rect(4f, extraY, view.width, 28f), claim.claimId + ": " + value + " (" + claim.effectiveConfidence.ToStringPercent() + ")");
+                        Widgets.Label(new Rect(4f, extraY, view.width, 28f), KnowledgeBrowserLabels.Claim(schema, claim.claimId) + ": " + value +
+                            " (" + claim.effectiveConfidence.ToStringPercent() + ")");
                         extraY += 34f;
                     }
                 }
@@ -292,13 +346,53 @@ namespace KnowledgeFramework
                     extraY += 26f;
                     foreach (KnowledgeMilestoneState milestone in milestones)
                     {
-                        Widgets.Label(new Rect(4f, extraY, view.width, 24f), milestone.milestoneId + ": " + (milestone.completed ? "100%" : milestone.progress.ToStringPercent()));
-                        extraY += 30f;
+                        Widgets.Label(new Rect(4f, extraY, view.width, 36f),
+                            KnowledgeBrowserLabels.Track(schema, milestone.trackId) + ": " +
+                            KnowledgeBrowserLabels.Milestone(schema, milestone.trackId, milestone.milestoneId) + " " +
+                            (milestone.completed ? "100%" : milestone.progress.ToStringPercent()));
+                        extraY += 42f;
                     }
                 }
-                provider?.DrawSubjectDetails(new Rect(0f, extraY, view.width, 80f), subject, pawn, scope);
+                if (browserRow.unmetRequirementCount > 0)
+                {
+                    Widgets.Label(new Rect(0f, extraY, view.width, 24f), "KnowledgeFramework_RequirementsUnmet".Translate(
+                        browserRow.unmetRequirementCount));
+                    extraY += 30f;
+                }
+                if (contextualProvider != null)
+                    contextualProvider.DrawSubjectDetails(new Rect(0f, extraY, view.width, 80f), subject, pawn, scope, context);
+                else
+                    provider?.DrawSubjectDetails(new Rect(0f, extraY, view.width, 80f), subject, pawn, scope);
             }
             finally { Widgets.EndScrollView(); }
+        }
+
+        private KnowledgeBrowserRow DetailModel(KnowledgeSchema schema)
+        {
+            int knowledgeRevision = KnowledgeQuery.Revision;
+            int uiRevision = KnowledgeUiCache.Revision;
+            int pawnId = pawn?.thingIDNumber ?? 0;
+            if (detailModel == null || detailKnowledgeRevision != knowledgeRevision || detailUiRevision != uiRevision ||
+                detailPawnId != pawnId || detailScope != scope || detailDomain != schema.id || detailSubject != subjectId ||
+                !detailContext.Equals(context))
+            {
+                detailModel = KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                {
+                    domainId = schema.id,
+                    pawn = pawn,
+                    scope = scope,
+                    context = context,
+                    fallback = KnowledgeContextFallbackMode.ParentThenGlobal
+                }, subjectId);
+                detailKnowledgeRevision = knowledgeRevision;
+                detailUiRevision = uiRevision;
+                detailPawnId = pawnId;
+                detailScope = scope;
+                detailDomain = schema.id;
+                detailSubject = subjectId;
+                detailContext = context;
+            }
+            return detailModel;
         }
     }
 }

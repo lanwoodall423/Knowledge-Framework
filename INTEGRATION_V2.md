@@ -53,6 +53,35 @@ KnowledgeRegistry.RegisterSubject("example.domain", new KnowledgeSubjectRegistra
 });
 ```
 
+### Discovery stage aggregation
+
+Domains choose the subject-wide stage calculation with
+`KnowledgeStageAggregationMode`:
+
+- `LegacySumMax`: `knowledge = sum(max(0, facet.amount))` and
+  `confidence = max(facet.confidence)`. This is the historical V1/V2 behavior.
+- `Balanced`: for each applicable facet, let `w = completenessAmount` and
+  `p = clamp(amount / w, 0, 1)`. Subject knowledge is
+  `100 * sum(p * w) / sum(w)`. Subject confidence is
+  `sum(confidence * w for facets with evidence) / sum(w)`; facets with no
+  evidence contribute zero, and evidence count is treated as presence rather
+  than allowing repeated evidence in one facet to dominate the subject.
+
+Balanced knowledge is therefore normalized to 0-100, and balanced stage
+`minimumKnowledge` values must also be 0-100. Equivalent facets produce the
+same result, while an empty applicable facet cannot advance a subject. A
+facet-specific `KnowledgeRequirementGroup` remains an additional exact gate;
+domains that want exact facet progression should set the coarse stage thresholds
+appropriately (often zero) and express the facet thresholds in the group.
+
+Existing V1/V2 domain definitions, V1 `KnowledgeDomainDefinition` values, and
+ambiguous dynamic `KnowledgeDomainRegistration` values default to
+`LegacySumMax`. New V3 registrations should explicitly set
+`stageAggregationMode = KnowledgeStageAggregationMode.Balanced`; this explicit
+choice is retained in the immutable schema and is reconstructed from the same
+domain definition/registration on reload, so save/index rebuilding cannot change
+stage eligibility.
+
 ## Sharing and documentation
 
 ```csharp

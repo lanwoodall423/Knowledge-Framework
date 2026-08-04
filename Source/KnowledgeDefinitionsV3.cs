@@ -43,6 +43,7 @@ namespace KnowledgeFramework
         Permanent,
         SlowlyStale,
         Seasonal,
+        [Obsolete("Contextual staleness has no defined decay contract; use SlowlyStale or ConsumerManaged.")]
         Contextual,
         ConsumerManaged
     }
@@ -88,6 +89,7 @@ namespace KnowledgeFramework
         ObserverOnly,
         WitnessesFull,
         WitnessesReduced,
+        [Obsolete("PartyShared has no party resolver; use WitnessesReduced or Custom.")]
         PartyShared,
         ColonyDirect,
         Custom
@@ -160,6 +162,7 @@ namespace KnowledgeFramework
         }
 
         public bool IsEmpty => typeId.NullOrEmpty() || stableId.NullOrEmpty();
+        public bool IsPartial => typeId.NullOrEmpty() != stableId.NullOrEmpty();
         public static KnowledgeContextKey Empty => new KnowledgeContextKey(null, null);
 
         public bool Equals(KnowledgeContextKey other) => typeId == other.typeId && stableId == other.stableId;
@@ -319,12 +322,17 @@ namespace KnowledgeFramework
         public string categoryId;
         public string iconPath;
         public string templateSubjectId;
+        [Obsolete("Archetype contextuality is unsupported; context is explicit on observations and queries.")]
         public bool contextual;
         public List<string> applicableFacetIds;
         public List<string> applicableClaimIds;
+        [Obsolete("Archetype discovery-stage restrictions are unsupported.")]
         public List<string> discoveryStageIds;
+        [Obsolete("Archetype observation restrictions are unsupported.")]
         public List<string> observationIds;
+        [Obsolete("Archetype effect restrictions are unsupported.")]
         public List<string> effectIds;
+        [Obsolete("Archetype expertise-track restrictions are unsupported.")]
         public List<string> expertiseTrackIds;
         public string comparisonSchemaId;
 
@@ -425,6 +433,10 @@ namespace KnowledgeFramework
         public string stableId;
         public string parentTypeId;
         public bool allowFallback = true;
+
+        // ParentThenGlobal stops at this type when false. The value is deliberately
+        // not inferred from contextual records; fallback remains an explicit query choice.
+        [Obsolete("contextualByDefault is unsupported. Context is explicit on observations and queries.")]
         public bool contextualByDefault;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
@@ -453,6 +465,7 @@ namespace KnowledgeFramework
         public KnowledgeMilestonePauseBehavior pauseBehavior;
         public KnowledgeMilestoneResetBehavior resetBehavior;
         public KnowledgeRequirementGroup requirements;
+        [Obsolete("Custom milestone evaluators have no evaluator registry.")]
         public string customEvaluatorId;
 
         public string StableId => stableId.NullOrEmpty() ? label : stableId;
@@ -475,6 +488,7 @@ namespace KnowledgeFramework
         public float adept = 100f;
         public float expert = 300f;
         public float master = 700f;
+        /// <summary>Maximum number of domain/track contribution records retained for a pawn.</summary>
         public int contributionLimit = 64;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
@@ -805,7 +819,9 @@ namespace KnowledgeFramework
         public string label;
         public List<string> claimIds = new List<string>();
         public List<string> facetIds = new List<string>();
+        [Obsolete("Comparison milestone rows require a consumer row provider.")]
         public List<string> milestoneTrackIds = new List<string>();
+        [Obsolete("Comparison relation rows require a consumer row provider.")]
         public List<string> relationTypeIds = new List<string>();
     }
 

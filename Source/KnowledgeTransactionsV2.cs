@@ -46,6 +46,10 @@ namespace KnowledgeFramework
         public string expertiseTrackId;
         public bool suppressConfiguredKnowledge;
         public bool notify = true;
+
+        // These are transaction-local gates; they are never serialized or exposed as API state.
+        internal bool skipApplication;
+        internal bool accrualCommitted;
     }
 
     public sealed class KnowledgeTransaction
@@ -445,9 +449,17 @@ namespace KnowledgeFramework
         internal static bool ApplyInsightOutcome(GameComponent_KnowledgeFramework component, KnowledgeObservation observation,
             List<KnowledgeChange> changes)
         {
-            if (!TryValidate(observation, out ValidatedObservation validated, out string error)) return false;
             HashSet<string> ignoredDependencies = new HashSet<string>(StringComparer.Ordinal);
-            ApplyScope(component, validated, observation.targetColony, changes, ignoredDependencies);
+            if (!KnowledgeV3Runtime.PrepareTransaction(new KnowledgeTransaction { source = observation?.source }.Add(observation),
+                out KnowledgeTransaction prepared, out _)) return false;
+            List<ValidatedObservation> validatedCandidates = new List<ValidatedObservation>();
+            foreach (KnowledgeObservation candidate in prepared.Observations)
+            {
+                if (!TryValidate(candidate, out ValidatedObservation validated, out _)) return false;
+                validatedCandidates.Add(validated);
+            }
+            foreach (ValidatedObservation validated in validatedCandidates)
+                ApplyScope(component, validated, validated.input.targetColony, changes, ignoredDependencies);
             return true;
         }
 
@@ -467,6 +479,7 @@ namespace KnowledgeFramework
             output = null;
             error = null;
             if (input == null) { error = "Observation is null."; return false; }
+            if (input.context.IsPartial) { error = "Context keys require stable type and ID values."; return false; }
             string domainId = KnowledgeRegistry.ResolveDomainId(input.domainId);
             string subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, input.subjectId);
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
@@ -479,6 +492,8 @@ namespace KnowledgeFramework
             string facetId = input.facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : input.facetId;
             KnowledgeFacetSchema facet = schema.Facet(facetId);
             if (facet == null) { error = "Unknown facet '" + facetId + "'."; return false; }
+            if (!KnowledgeRegistry.ApplicableFacets(domainId, subjectId).Any(item => item.id == facetId))
+            { error = "Facet '" + facetId + "' is not applicable to the subject."; return false; }
             if (!input.targetColony && input.observer == null) { error = "Personal observations require an observer pawn."; return false; }
             if (!input.targetColony && !facet.personallyKnowable) { error = "The facet cannot be personally known."; return false; }
             float[] values = { input.quality, input.novelty, input.repetition, input.environmentalDifficulty,
@@ -548,6 +563,7 @@ namespace KnowledgeFramework
         private static void Apply(GameComponent_KnowledgeFramework component, ValidatedObservation value,
             List<KnowledgeChange> changes, HashSet<string> dependencies, HashSet<Pawn> changedPawns)
         {
+            if (value.input.skipApplication) return;
             bool colony = value.input.targetColony;
             ApplyScope(component, value, colony, changes, dependencies);
             if (!colony && value.schema.sharingModel == KnowledgeSharingModel.Immediate && value.input.shareable &&
@@ -559,6 +575,7 @@ namespace KnowledgeFramework
         private static void ApplyScope(GameComponent_KnowledgeFramework component, ValidatedObservation value, bool colony,
             List<KnowledgeChange> changes, HashSet<string> dependencies)
         {
+            if (value.input.skipApplication) return;
             Pawn pawn = colony ? null : value.input.observer;
             KnowledgeFacetStateRecord facet = colony
                 ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(value.domainId, value.subjectId, value.facetId, true)
@@ -608,22 +625,17 @@ namespace KnowledgeFramework
             KnowledgeContextKey context = default(KnowledgeContextKey))
         {
             if (schema.stages.Count == 0) return;
-            float amount = 0f;
-            float confidence = 0f;
-            IReadOnlyList<KnowledgeFacetSchema> applicable = KnowledgeRegistry.ApplicableFacets(domainId, subjectId);
-            for (int i = 0; i < applicable.Count; i++)
-            {
-                KnowledgeFacetStateRecord facet = colony
-                    ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(domainId, subjectId, applicable[i].id, false)
-                    : component.PersonalFacetV2(domainId, subjectId, applicable[i].id, pawn, false);
-                if (facet == null) continue;
-                amount += facet.amount;
-                confidence = Math.Max(confidence, KnowledgeMath.Confidence(facet.supportingEvidence, facet.contradictoryEvidence, schema.uncertaintyEnabled));
-            }
+            // The persisted V2 subject stage is the global/legacy stage. Contextual
+            // stage views are derived by KnowledgeDiscovery without overwriting this
+            // shared record with whichever context happened to be observed last.
+            KnowledgeStageAggregate aggregate = KnowledgeStageAggregation.ForSubject(component, schema, domainId, subjectId,
+                pawn, colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, KnowledgeContextKey.Empty,
+                KnowledgeContextFallbackMode.ExactOnly);
             KnowledgeStageSchema current = schema.Stage(subject.stageId);
             KnowledgeStageSchema stage = schema.stages.LastOrDefault(item =>
             {
-                bool legacy = amount >= item.minimumKnowledge && confidence >= item.minimumConfidence && (!item.documented || subject.documented);
+                bool legacy = aggregate.knowledge >= item.minimumKnowledge && aggregate.confidence >= item.minimumConfidence &&
+                    (!item.documented || subject.documented);
                 bool requirements = item.requirementGroup == null || KnowledgeRequirementService.Evaluate(item.requirementGroup, domainId, subjectId,
                     pawn, colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, context, out _);
                 return legacy && requirements;

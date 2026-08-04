@@ -159,7 +159,7 @@ namespace KnowledgeFramework
                     Widgets.Label(new Rect(52f, row.y + 4f, row.width - 58f, 24f), pawn.LabelShortCap);
                     GUI.color = Color.gray;
                     Widgets.Label(new Rect(52f, row.y + 26f, row.width - 58f, 20f),
-                        (expertiseFor?.Invoke(pawn) ?? KnowledgeRank.Novice).ToString());
+                        KnowledgeBrowserLabels.Rank(expertiseFor?.Invoke(pawn) ?? KnowledgeRank.Novice));
                     GUI.color = Color.white;
                     if (Widgets.ButtonInvisible(row))
                     {
@@ -193,7 +193,8 @@ namespace KnowledgeFramework
                 DrawProgressBar(new Rect(rect.x, rect.y + 42f, rect.width, 30f), model.expertiseProgress,
                     model.expertiseRank == KnowledgeRank.Master
                         ? "KnowledgeFramework_ExpertiseMaster".Translate(model.expertiseLabel)
-                        : "KnowledgeFramework_ExpertiseToward".Translate(model.expertiseLabel, ((KnowledgeRank)((int)model.expertiseRank + 1)).ToString()));
+                        : "KnowledgeFramework_ExpertiseToward".Translate(model.expertiseLabel,
+                            KnowledgeBrowserLabels.Rank((KnowledgeRank)((int)model.expertiseRank + 1))));
             }
 
             List<KnowledgeMenuSection> sections = model.sections?.Where(section => section != null).ToList()
@@ -260,11 +261,12 @@ namespace KnowledgeFramework
             }
             Widgets.Label(new Rect(textX, row.y + 2f, row.width * 0.46f - textX, 22f), value.label ?? "KnowledgeFramework_Unknown".Translate());
             GUI.color = Color.gray;
-            Widgets.Label(new Rect(textX, row.y + 22f, row.width * 0.48f - textX, 20f), value.status ?? value.rank.ToString());
+            Widgets.Label(new Rect(textX, row.y + 22f, row.width * 0.48f - textX, 20f), value.status ?? KnowledgeBrowserLabels.Rank(value.rank));
             GUI.color = Color.white;
             DrawProgressBar(new Rect(row.width * 0.52f, row.y + 8f, row.width * 0.46f, 26f), value.progress,
                 "KnowledgeFramework_KnowledgePercent".Translate(Mathf.Clamp01(value.progress).ToStringPercent()));
-            TooltipHandler.TipRegion(row, value.tooltip ?? ((value.label ?? "KnowledgeFramework_Knowledge".Translate()) + " - " + value.rank));
+            TooltipHandler.TipRegion(row, value.tooltip ?? ((value.label ?? "KnowledgeFramework_Knowledge".Translate()) + " - " +
+                KnowledgeBrowserLabels.Rank(value.rank)));
             if (Widgets.ButtonInvisible(row))
             {
                 if (value.actions != null && value.actions.Count > 0) Find.WindowStack.Add(new FloatMenu(value.actions));

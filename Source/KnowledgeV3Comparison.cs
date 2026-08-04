@@ -15,7 +15,9 @@ namespace KnowledgeFramework
 
         public static bool RegisterSchema(KnowledgeComparisonSchema schema, bool replace = false)
         {
-            if (schema == null || schema.id.NullOrEmpty() || Schemas.ContainsKey(schema.id) && !replace) return false;
+            if (schema == null || schema.id.NullOrEmpty() || Schemas.ContainsKey(schema.id) && !replace ||
+                schema.milestoneTrackIds != null && schema.milestoneTrackIds.Count > 0 ||
+                schema.relationTypeIds != null && schema.relationTypeIds.Count > 0) return false;
             Schemas[schema.id] = schema;
             return true;
         }

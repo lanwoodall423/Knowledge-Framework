@@ -184,6 +184,7 @@ namespace KnowledgeFramework
         public readonly bool uncertaintyEnabled;
         public readonly bool familiarityEnabled;
         public readonly KnowledgeSharingModel sharingModel;
+        public readonly KnowledgeStageAggregationMode stageAggregationMode;
         public readonly int sortOrder;
         public readonly int provenanceLimit;
         public readonly int evidenceAggregateLimit;
@@ -220,6 +221,7 @@ namespace KnowledgeFramework
             uncertaintyEnabled = value.enableUncertainty;
             familiarityEnabled = value.enableFamiliarity;
             sharingModel = value.sharingModel;
+            stageAggregationMode = value.stageAggregationMode;
             sortOrder = value.sortOrder;
             provenanceLimit = Math.Max(0, Math.Min(64, value.provenanceLimit));
             evidenceAggregateLimit = Math.Max(8, Math.Min(512, value.evidenceAggregateLimit));
@@ -269,6 +271,7 @@ namespace KnowledgeFramework
                 enableUncertainty = def.enableUncertainty,
                 enableFamiliarity = def.enableFamiliarity,
                 sharingModel = def.sharingModel,
+                stageAggregationMode = def.stageAggregationMode,
                 sortOrder = def.sortOrder,
                 provenanceLimit = def.provenanceLimit,
                 evidenceAggregateLimit = def.evidenceAggregateLimit,

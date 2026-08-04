@@ -201,7 +201,8 @@ namespace KnowledgeFramework
                     return KnowledgeQuery.Subject(context.domainId, subjectId, context.pawn, scope).familiarity >= requirement.minimum;
                 case KnowledgeRequirementKind.DiscoveryStage:
                     KnowledgeSchema schema = KnowledgeRegistry.Schema(context.domainId);
-                    KnowledgeStageSchema actual = schema?.Stage(KnowledgeQuery.Subject(context.domainId, subjectId, context.pawn, scope).stageId);
+                    KnowledgeStageSchema actual = schema?.Stage(KnowledgeDiscovery.CurrentStage(context.domainId, subjectId,
+                        context.pawn, scope, context.context, KnowledgeContextFallbackMode.ParentThenGlobal));
                     KnowledgeStageSchema needed = schema?.Stage(requirement.stageId);
                     return actual != null && needed != null && actual.order >= needed.order;
                 case KnowledgeRequirementKind.Expertise:
@@ -228,7 +229,8 @@ namespace KnowledgeFramework
             if (context.insight.outcomes == null) return;
             foreach (KnowledgeInsightOutcome outcome in context.insight.outcomes.Where(item => item != null))
             {
-                if (outcome.knowledge > 0f || outcome.familiarity > 0f || outcome.expertise > 0f)
+                if (outcome.knowledge > 0f || outcome.familiarity > 0f || outcome.expertise > 0f ||
+                    outcome.claimMeasurements != null && outcome.claimMeasurements.Any(item => item != null))
                 {
                     KnowledgeObservation observation = new KnowledgeObservation
                     {
@@ -416,19 +418,16 @@ namespace KnowledgeFramework
             KnowledgeContextKey context = query.context.IsEmpty && !query.contextTypeId.NullOrEmpty() && !query.contextId.NullOrEmpty()
                 ? new KnowledgeContextKey(query.contextTypeId, query.contextId) : query.context;
             KnowledgeScope effectScope = query.scope;
-            KnowledgeFacetSnapshotV2 facet = KnowledgeQuery.Facet(query.domainId, query.subjectId, query.facetId, query.pawn, effectScope, true, false, context,
-                KnowledgeContextFallbackMode.ParentThenGlobal);
-            KnowledgeSubjectSnapshotV2 subject = KnowledgeQuery.Subject(query.domainId, query.subjectId, query.pawn, effectScope);
             foreach (KnowledgeEffectDef effect in schema.effects.Where(item => item.channelId == query.channelId))
             {
                 KnowledgeFacetSnapshotV2 effectFacet = effect.useColony
                     ? KnowledgeQuery.Facet(query.domainId, query.subjectId, effect.facetId ?? query.facetId, null, KnowledgeScope.Colony, true, false)
                     : KnowledgeQuery.Facet(query.domainId, query.subjectId, effect.facetId ?? query.facetId, query.pawn, effectScope, true, false);
-                KnowledgeSubjectSnapshotV2 effectSubject = effect.useColony
-                    ? KnowledgeQuery.Subject(query.domainId, query.subjectId, null, KnowledgeScope.Colony)
-                    : subject;
+                string effectStage = KnowledgeDiscovery.CurrentStage(query.domainId, query.subjectId,
+                    effect.useColony ? null : query.pawn, effect.useColony ? KnowledgeScope.Colony : effectScope,
+                    context, KnowledgeContextFallbackMode.ParentThenGlobal);
                 if (effectFacet.amount < effect.minimumKnowledge || effectFacet.confidence < effect.minimumConfidence ||
-                    !StageMet(schema, effectSubject.stageId, effect.minimumStageId) ||
+                    !StageMet(schema, effectStage, effect.minimumStageId) ||
                     effect.requirements != null && !KnowledgeRequirementService.Evaluate(effect.requirements, schema.id, query.subjectId, query.pawn,
                         effect.useColony ? KnowledgeScope.Colony : effectScope, context, out _)) continue;
                 accumulator.Compose(effect.composition, effect.value, effect.priority, effect.resultId);

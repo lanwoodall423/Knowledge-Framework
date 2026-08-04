@@ -114,38 +114,58 @@ namespace KnowledgeFramework
             float knowledgeEfficiency = request.knowledgeEfficiency * (def?.knowledgeEfficiency ?? 1f);
             float confidenceEfficiency = request.confidenceEfficiency * (def?.confidenceEfficiency ?? 1f);
 
+            bool changed;
             switch (request.kind)
             {
                 case KnowledgeTransmissionKind.Report:
                     if (schema.sharingModel != KnowledgeSharingModel.Reportable && schema.sharingModel != KnowledgeSharingModel.Custom) return false;
-                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
+                    changed = CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, false, request.source);
+                    break;
                 case KnowledgeTransmissionKind.Document:
                     if (schema.sharingModel == KnowledgeSharingModel.Custom && !request.document) return false;
-                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
+                    changed = CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, true, request.source);
+                    break;
                 case KnowledgeTransmissionKind.Teach:
                 case KnowledgeTransmissionKind.Conversation:
-                    return CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                    changed = CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, request.source);
+                    break;
                 case KnowledgeTransmissionKind.Read:
                 case KnowledgeTransmissionKind.ConsultArchive:
-                    return CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                    changed = CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, request.source);
+                    break;
                 case KnowledgeTransmissionKind.RecruitKnowledge:
-                    return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
+                    changed = CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                         confidenceEfficiency, request.document, request.source);
+                    break;
                 case KnowledgeTransmissionKind.Custom:
                     if (request.sourcePawn != null && request.recipientPawn != null)
-                        return CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                        changed = CopyPersonalToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
                             confidenceEfficiency, request.source);
-                    if (request.sourcePawn != null)
-                        return CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
+                    else if (request.sourcePawn != null)
+                        changed = CopyPersonalToColony(component, schema, subjectId, request, knowledgeEfficiency,
                             confidenceEfficiency, request.document, request.source);
-                    return CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
-                        confidenceEfficiency, request.source);
+                    else
+                        changed = CopyColonyToPersonal(component, schema, subjectId, request, knowledgeEfficiency,
+                            confidenceEfficiency, request.source);
+                    break;
                 default: return false;
             }
+            bool milestonesChanged = request.includeMilestones && CopyMilestones(component, schema, subjectId, request);
+            if (milestonesChanged)
+            {
+                component.RefreshDiagnosticsV2();
+                if (!changed)
+                {
+                    if (request.recipientPawn != null) KnowledgeProviderRegistry.Invalidate(request.recipientPawn);
+                    else KnowledgeProviderRegistry.InvalidateAll();
+                    KnowledgeEngine.NotifyExternalChange(request.source ?? "transmission-milestones");
+                }
+            }
+            return changed || milestonesChanged;
         }
 
         private static bool CopyPersonalToColony(GameComponent_KnowledgeFramework component, KnowledgeSchema schema,
@@ -297,6 +317,7 @@ namespace KnowledgeFramework
             {
                 KnowledgeClaimDef claim = schema.Claim(record.claimId);
                 if (claim == null || request.claimIds != null && request.claimIds.Count > 0 && !request.claimIds.Contains(claim.StableId)) continue;
+                if (document && !claim.documentable) continue;
                 KnowledgeClaimSnapshot sourceSnapshot = KnowledgeClaimService.Snapshot(schema.id, subjectId, facetId, claim.StableId,
                     sourcePawn, sourcePawn == null ? KnowledgeScope.Colony : KnowledgeScope.Personal,
                     new KnowledgeContextKey(record.contextTypeId, record.contextId));
@@ -306,7 +327,6 @@ namespace KnowledgeFramework
                     targetColony, requestedContext.IsEmpty ? new KnowledgeContextKey(record.contextTypeId, record.contextId) : requestedContext, true);
                 foreach (KnowledgeMeasurementRecord item in record.measurements)
                 {
-                    if (!request.includeProvenance && !item.summary.NullOrEmpty()) continue;
                     if (request.evidenceDispositions != null && request.evidenceDispositions.Count > 0 && !request.evidenceDispositions.Contains((KnowledgeEvidenceDisposition)item.disposition)) continue;
                     KnowledgeMeasurement measurement = item.ToMeasurement();
                     measurement.observer = targetColony ? null : recipientPawn;
@@ -314,6 +334,22 @@ namespace KnowledgeFramework
                     measurement.quality *= confidenceEfficiency;
                     measurement.evidenceWeight *= confidenceEfficiency;
                     measurement.documented |= document;
+                    if (!request.includeProvenance)
+                    {
+                        // Provenance filtering retains the measurement but drops
+                        // all source-identifying metadata at the transfer boundary.
+                        measurement.source = null;
+                        measurement.sourceInstanceId = null;
+                        measurement.methodId = null;
+                        measurement.reasonId = null;
+                        measurement.specimenId = null;
+                        measurement.summary = null;
+                    }
+                    else if (schema.transmission?.preserveSourceAttribution != true)
+                    {
+                        measurement.source = null;
+                        measurement.sourceInstanceId = null;
+                    }
                     if (!request.includeContradictory && measurement.disposition == KnowledgeEvidenceDisposition.Contradictory) continue;
                     KnowledgeClaimService.Apply(component, measurement, new KnowledgeObservation
                     {
@@ -328,6 +364,47 @@ namespace KnowledgeFramework
                 }
                 if (document) changed = true;
             }
+            return changed;
+        }
+
+        private static bool CopyMilestones(GameComponent_KnowledgeFramework component, KnowledgeSchema schema, string subjectId,
+            KnowledgeTransmissionRequest request)
+        {
+            bool sourceColony = request.kind == KnowledgeTransmissionKind.Read || request.kind == KnowledgeTransmissionKind.ConsultArchive ||
+                request.kind == KnowledgeTransmissionKind.Custom && request.sourcePawn == null;
+            bool targetColony = !sourceColony && request.recipientPawn == null;
+            Pawn sourcePawn = sourceColony ? null : request.sourcePawn;
+            Pawn targetPawn = targetColony ? null : request.recipientPawn;
+            if (sourceColony && targetPawn == null || !sourceColony && sourcePawn == null) return false;
+            KnowledgeContextKey requestedContext = request.context.IsEmpty && !request.contextTypeId.NullOrEmpty() && !request.contextId.NullOrEmpty()
+                ? new KnowledgeContextKey(request.contextTypeId, request.contextId) : request.context;
+            bool changed = false;
+            foreach (KnowledgeMilestoneStateRecord source in component.MilestoneRecordsForScopeV3(schema.id, subjectId, sourcePawn, sourceColony).ToList())
+            {
+                KnowledgeContextKey sourceContext = new KnowledgeContextKey(source.contextTypeId, source.contextId);
+                if (!requestedContext.IsEmpty && !sourceContext.Equals(requestedContext)) continue;
+                KnowledgeContextKey targetContext = requestedContext.IsEmpty ? sourceContext : requestedContext;
+                KnowledgeMilestoneStateRecord target = component.MilestoneV3(schema.id, subjectId, source.trackId, source.milestoneId, targetPawn, targetContext, true);
+                bool valueChanged = !target.available && source.available || !target.started && source.started ||
+                    !target.completed && source.completed || target.progress < source.progress || target.bestHistoricalValue < source.bestHistoricalValue ||
+                    target.interrupted != source.interrupted && source.interrupted;
+                target.available |= source.available;
+                target.started |= source.started;
+                target.completed |= source.completed;
+                target.interrupted |= source.interrupted;
+                target.progress = Math.Max(target.progress, source.progress);
+                target.bestHistoricalValue = Math.Max(target.bestHistoricalValue, source.bestHistoricalValue);
+                target.startTick = target.startTick == 0 ? source.startTick : Math.Min(target.startTick, source.startTick);
+                target.completionTick = Math.Max(target.completionTick, source.completionTick);
+                target.interruptionReason = target.interruptionReason ?? source.interruptionReason;
+                target.completingPawn = target.completed ? targetPawn : target.completingPawn;
+                if (valueChanged)
+                {
+                    target.revision = component.GlobalRevision;
+                    changed = true;
+                }
+            }
+            if (changed) component.TouchV3();
             return changed;
         }
     }

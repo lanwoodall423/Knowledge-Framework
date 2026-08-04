@@ -14,7 +14,9 @@ namespace KnowledgeFramework
             KnowledgeScope scope, bool includeDerived, bool includeEvidenceDetails, KnowledgeContextKey context,
             KnowledgeContextFallbackMode fallback)
         {
-            if (context.IsEmpty) return Facet(domainId, subjectId, facetId, pawn, scope, includeDerived, includeEvidenceDetails);
+            if (context.IsPartial)
+                return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, scope == KnowledgeScope.Colony ? null : pawn, scope,
+                    0f, 0f, 0f, 0f, true, 0, 0, 0, 0, null, null, null, context, false, 0);
             domainId = KnowledgeRegistry.ResolveDomainId(domainId);
             subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId);
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
@@ -23,15 +25,27 @@ namespace KnowledgeFramework
             KnowledgeFacetSchema facet = schema?.Facet(facetId);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (schema == null || facet == null || component == null)
-                return Facet(domainId, subjectId, facetId, pawn, scope, includeDerived, includeEvidenceDetails);
+            {
+                if (context.IsEmpty && !context.IsPartial) return Facet(domainId, subjectId, facetId, pawn, scope, includeDerived, includeEvidenceDetails);
+                return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, scope == KnowledgeScope.Colony ? null : pawn, scope,
+                    0f, 0f, 0f, 0f, true, 0, 0, 0, 0, null, null, null, context, false, 0);
+            }
             bool colony = scope == KnowledgeScope.Colony;
             KnowledgeContextFacetStateRecord record = null;
             foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, fallback))
             {
                 record = component.ContextFacetV3(domainId, subjectId, facetId, colony ? null : pawn, colony, candidate, false);
-                if (record != null) break;
+                if (record != null && (record.amount > 0f || record.evidenceCount > 0 || record.supportingEvidence > 0f || record.contradictoryEvidence > 0f)) break;
             }
-            if (record == null) return Facet(domainId, subjectId, facetId, pawn, scope, includeDerived, includeEvidenceDetails);
+            if (record == null || record.amount <= 0f && record.evidenceCount <= 0 && record.supportingEvidence <= 0f && record.contradictoryEvidence <= 0f)
+            {
+                // The empty context is the persisted global key. Legacy V2 data is a
+                // compatibility fallback only when that exact global key has no value;
+                // a contextual query must never silently become a legacy query.
+                if (context.IsEmpty && !context.IsPartial) return Facet(domainId, subjectId, facetId, pawn, scope, includeDerived, includeEvidenceDetails);
+                return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, colony ? null : pawn, scope, 0f, 0f, 0f, 0f,
+                    true, 0, 0, 0, 0, null, null, null, context, false, 0);
+            }
             float confidence = KnowledgeMath.Confidence(record.supportingEvidence, record.contradictoryEvidence, schema.uncertaintyEnabled);
             return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, colony ? null : pawn, scope, record.amount, 0f,
                 Math.Min(1f, record.amount / facet.completenessAmount), confidence, false, record.evidenceCount,

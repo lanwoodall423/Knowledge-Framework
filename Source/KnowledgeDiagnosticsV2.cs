@@ -145,6 +145,7 @@ namespace KnowledgeFramework
         public static IReadOnlyList<KnowledgeValidationIssue> ValidateAll()
         {
             List<KnowledgeValidationIssue> result = KnowledgeRegistry.ValidationIssues.ToList();
+            result.AddRange(KnowledgeContextRegistry.Validate().Select(issue => new KnowledgeValidationIssue("v3.context", null, issue, true)));
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component != null && component.OrphanCount() > 0)
                 result.Add(new KnowledgeValidationIssue("persistence.orphans", "save", component.OrphanCount() + " records reference unavailable domains or subjects.", false));

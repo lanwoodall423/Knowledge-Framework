@@ -86,6 +86,7 @@ namespace KnowledgeFramework
             subjectId = subjectId?.Trim();
             facetId = facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : facetId.Trim();
             claimId = claimId?.Trim();
+            if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty()) contextTypeId = contextId = null;
             scope = Math.Max(0, Math.Min(1, scope));
             valueType = Math.Max(0, Math.Min(Enum.GetValues(typeof(KnowledgeClaimValueType)).Length - 1, valueType));
             numericValue = KnowledgeMath.IsFinite(numericValue) ? numericValue : 0f;
@@ -231,10 +232,13 @@ namespace KnowledgeFramework
             subjectId = subjectId?.Trim();
             facetId = facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : facetId.Trim();
             claimId = claimId?.Trim();
+            if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty()) contextTypeId = contextId = null;
             if (measurements == null) measurements = new List<KnowledgeMeasurementRecord>();
             measurements.RemoveAll(item => item == null || item.claimId.NullOrEmpty());
             foreach (KnowledgeMeasurementRecord item in measurements) item.Normalize();
-            measurements = measurements.OrderBy(item => item.tick).Take(64).ToList();
+            // Keep a bounded legacy-safe list here; RebuildV3Indexes applies the
+            // schema-specific history limit after deduplicating records.
+            measurements = measurements.OrderBy(item => item.tick).Take(4096).ToList();
         }
     }
 
@@ -278,6 +282,7 @@ namespace KnowledgeFramework
 
         public void Normalize()
         {
+            if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty()) contextTypeId = contextId = null;
             amount = KnowledgeMath.NonNegativeFiniteOr(amount, 0f);
             supportingEvidence = KnowledgeMath.NonNegativeFiniteOr(supportingEvidence, 0f);
             contradictoryEvidence = KnowledgeMath.NonNegativeFiniteOr(contradictoryEvidence, 0f);
@@ -335,6 +340,7 @@ namespace KnowledgeFramework
 
         public void Normalize()
         {
+            if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty()) contextTypeId = contextId = null;
             progress = KnowledgeMath.Clamp01Finite(progress);
             bestHistoricalValue = KnowledgeMath.NonNegativeFiniteOr(bestHistoricalValue, 0f);
             startTick = Math.Max(0, startTick);
@@ -381,6 +387,7 @@ namespace KnowledgeFramework
 
         public void Normalize()
         {
+            if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty()) contextTypeId = contextId = null;
             confidence = KnowledgeMath.Clamp01Finite(confidence);
             tick = Math.Max(0, tick);
             if (metadata == null) metadata = new Dictionary<string, string>();
@@ -435,12 +442,20 @@ namespace KnowledgeFramework
         public string key;
         public string domainId;
         public string subjectId;
+        public string observationId;
+        public string policyNamespace;
+        public string facetId;
+        public bool colony;
         public int pawnId;
         public string sourceInstanceId;
+        public List<string> sourceInstanceIds = new List<string>();
         public string specimenId;
         public string contextKey;
+        public List<string> contextKeys = new List<string>();
         public int count;
         public int dailyCount;
+        public int successCount;
+        public int failureCount;
         public int day;
         public int lastTick;
         public string lastSource;
@@ -450,19 +465,31 @@ namespace KnowledgeFramework
             Scribe_Values.Look(ref key, "key");
             Scribe_Values.Look(ref domainId, "domainId");
             Scribe_Values.Look(ref subjectId, "subjectId");
+            Scribe_Values.Look(ref observationId, "observationId");
+            Scribe_Values.Look(ref policyNamespace, "policyNamespace");
+            Scribe_Values.Look(ref facetId, "facetId");
+            Scribe_Values.Look(ref colony, "colony");
             Scribe_Values.Look(ref pawnId, "pawnId");
             Scribe_Values.Look(ref sourceInstanceId, "sourceInstanceId");
+            Scribe_Collections.Look(ref sourceInstanceIds, "sourceInstanceIds", LookMode.Value);
             Scribe_Values.Look(ref specimenId, "specimenId");
             Scribe_Values.Look(ref contextKey, "contextKey");
+            Scribe_Collections.Look(ref contextKeys, "contextKeys", LookMode.Value);
             Scribe_Values.Look(ref count, "count");
             Scribe_Values.Look(ref dailyCount, "dailyCount");
+            Scribe_Values.Look(ref successCount, "successCount");
+            Scribe_Values.Look(ref failureCount, "failureCount");
             Scribe_Values.Look(ref day, "day");
             Scribe_Values.Look(ref lastTick, "lastTick");
             Scribe_Values.Look(ref lastSource, "lastSource");
             count = Mathf.Clamp(count, 0, 100000000);
             dailyCount = Mathf.Clamp(dailyCount, 0, 100000000);
+            successCount = Mathf.Clamp(successCount, 0, count);
+            failureCount = Mathf.Clamp(failureCount, 0, count);
             day = Math.Max(0, day);
             lastTick = Math.Max(0, lastTick);
+            sourceInstanceIds = (sourceInstanceIds ?? new List<string>()).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            contextKeys = (contextKeys ?? new List<string>()).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
         }
     }
 
@@ -582,6 +609,14 @@ namespace KnowledgeFramework
             Scribe_References.Look(ref pawn, "pawn");
             Scribe_Values.Look(ref amount, "amount");
             Scribe_Values.Look(ref revision, "revision");
+            Normalize();
+        }
+
+        public void Normalize()
+        {
+            namespaceId = namespaceId?.Trim();
+            domainId = domainId?.Trim();
+            trackId = trackId?.Trim();
             amount = KnowledgeMath.NonNegativeFiniteOr(amount, 0f);
             revision = Math.Max(0, revision);
         }
@@ -600,6 +635,12 @@ namespace KnowledgeFramework
             Scribe_Values.Look(ref version, "version");
             Scribe_Values.Look(ref committed, "committed");
             Scribe_Values.Look(ref tick, "tick");
+            Normalize();
+        }
+
+        public void Normalize()
+        {
+            consumerId = consumerId?.Trim();
             version = Math.Max(0, version);
             tick = Math.Max(0, tick);
         }
@@ -734,7 +775,7 @@ namespace KnowledgeFramework
             Scribe_Collections.Look(ref consumerMigrationsV3, "knowledgeFrameworkV3Migrations", LookMode.Deep);
         }
 
-        private void RebuildV3Indexes()
+        internal void RebuildV3Indexes()
         {
             InitializeV3();
             claimsV3 = claimsV3 ?? new List<KnowledgeClaimStateRecord>();
@@ -755,7 +796,10 @@ namespace KnowledgeFramework
             }
             foreach (KnowledgeClaimStateRecord item in claimsV3Index.Values)
             {
-                item.measurements = item.measurements.Where(value => value != null).OrderBy(value => value.tick).Take(64).ToList();
+                int limit = Math.Max(1, Math.Min(4096, KnowledgeRegistry.Schema(item.domainId)?.Claim(item.claimId)?.measurementHistoryLimit ?? 64));
+                List<KnowledgeMeasurementRecord> normalizedMeasurements = item.measurements.Where(value => value != null).GroupBy(MeasurementIdentity)
+                    .Select(group => group.OrderByDescending(value => value.tick).First()).OrderBy(value => value.tick).ToList();
+                item.measurements = normalizedMeasurements.Skip(Math.Max(0, normalizedMeasurements.Count - limit)).ToList();
                 item.Normalize();
             }
             claimsV3 = claimsV3Index.Values.ToList();
@@ -774,20 +818,64 @@ namespace KnowledgeFramework
                     existing.successCount = Math.Max(existing.successCount, item.successCount);
                     existing.failureCount = Math.Max(existing.failureCount, item.failureCount);
                     existing.lastTick = Math.Max(existing.lastTick, item.lastTick);
+                    existing.revision = Math.Max(existing.revision, item.revision);
+                    existing.Normalize();
                 }
             }
+            contextFacetsV3 = contextFacetsV3Index.Values.ToList();
             foreach (KnowledgeMilestoneStateRecord item in milestonesV3.Where(item => item != null))
             {
                 item.Normalize();
-                milestonesV3Index[new MilestoneRuntimeKey(item.domainId, item.subjectId, item.trackId, item.milestoneId, item.pawn,
-                    new KnowledgeContextKey(item.contextTypeId, item.contextId))] = item;
+                MilestoneRuntimeKey key = new MilestoneRuntimeKey(item.domainId, item.subjectId, item.trackId, item.milestoneId, item.pawn,
+                    new KnowledgeContextKey(item.contextTypeId, item.contextId));
+                if (milestonesV3Index.TryGetValue(key, out KnowledgeMilestoneStateRecord existing)) MergeMilestone(existing, item);
+                else milestonesV3Index[key] = item;
             }
-            foreach (KnowledgeAccrualStateRecord item in accrualV3.Where(item => item != null && !item.key.NullOrEmpty())) accrualV3Index[item.key] = item;
+            milestonesV3 = milestonesV3Index.Values.ToList();
+            Dictionary<string, KnowledgeSubjectRelationStateRecord> normalizedRelations = new Dictionary<string, KnowledgeSubjectRelationStateRecord>(StringComparer.Ordinal);
+            foreach (KnowledgeSubjectRelationStateRecord item in relationsV3.Where(item => item != null))
+            {
+                item.Normalize();
+                string key = string.Join("\n", item.domainId, item.fromSubjectId, item.toDomainId, item.toSubjectId, item.relationTypeId,
+                    item.contextTypeId, item.contextId);
+                if (!normalizedRelations.TryGetValue(key, out KnowledgeSubjectRelationStateRecord existing) ||
+                    item.tick > existing.tick || item.tick == existing.tick && string.CompareOrdinal(item.source, existing.source) > 0)
+                    normalizedRelations[key] = item;
+            }
+            relationsV3 = normalizedRelations.OrderBy(pair => pair.Key, StringComparer.Ordinal).Select(pair => pair.Value).ToList();
+            Dictionary<string, KnowledgeAccrualStateRecord> normalizedAccrual = new Dictionary<string, KnowledgeAccrualStateRecord>(StringComparer.Ordinal);
+            foreach (KnowledgeAccrualStateRecord item in accrualV3.Where(item => item != null))
+            {
+                NormalizeAccrual(item);
+                if (item.key.NullOrEmpty()) continue;
+                if (normalizedAccrual.TryGetValue(item.key, out KnowledgeAccrualStateRecord existing)) MergeAccrual(existing, item);
+                else normalizedAccrual[item.key] = item;
+            }
+            accrualV3Index = normalizedAccrual;
+            accrualV3 = normalizedAccrual.Values.OrderBy(item => item.key, StringComparer.Ordinal).ToList();
+            KnowledgeAccrualService.EnforceStateLimits(this);
+            Dictionary<string, KnowledgeSharedExpertiseStateRecord> normalizedExpertise = new Dictionary<string, KnowledgeSharedExpertiseStateRecord>(StringComparer.Ordinal);
             foreach (KnowledgeSharedExpertiseStateRecord item in sharedExpertiseV3.Where(item => item != null && !item.namespaceId.NullOrEmpty()))
-                sharedExpertiseV3Index[SharedExpertiseKey(item.namespaceId, item.domainId, item.trackId, item.pawn)] = item;
+            {
+                item.Normalize();
+                string key = SharedExpertiseKey(item.namespaceId, item.domainId, item.trackId, item.pawn);
+                if (normalizedExpertise.TryGetValue(key, out KnowledgeSharedExpertiseStateRecord existing)) existing.amount = Math.Max(existing.amount, item.amount);
+                else normalizedExpertise[key] = item;
+            }
+            sharedExpertiseV3Index = normalizedExpertise;
+            sharedExpertiseV3 = normalizedExpertise.Values.OrderBy(item => SharedExpertiseKey(item.namespaceId, item.domainId, item.trackId, item.pawn), StringComparer.Ordinal).ToList();
             foreach (KnowledgeMigrationStateRecord item in consumerMigrationsV3.Where(item => item != null && !item.consumerId.NullOrEmpty()))
-                consumerMigrationsV3Index[item.consumerId] = item;
-            subjectOverridesV3.RemoveAll(item => item == null || item.domainId.NullOrEmpty() || item.id.NullOrEmpty());
+            {
+                item.Normalize();
+                if (consumerMigrationsV3Index.TryGetValue(item.consumerId, out KnowledgeMigrationStateRecord existing))
+                    MergeMigration(existing, item);
+                else consumerMigrationsV3Index[item.consumerId] = item;
+            }
+            consumerMigrationsV3 = consumerMigrationsV3Index.Values.OrderBy(item => item.consumerId, StringComparer.Ordinal).ToList();
+            subjectOverridesV3 = subjectOverridesV3.Where(item => item != null && !item.domainId.NullOrEmpty() && !item.id.NullOrEmpty())
+                .GroupBy(item => item.domainId + "\n" + item.id, StringComparer.Ordinal)
+                .Select(group => group.Last()).OrderBy(item => item.domainId, StringComparer.Ordinal)
+                .ThenBy(item => item.id, StringComparer.Ordinal).ToList();
             foreach (KnowledgeSubjectOverrideRecord item in subjectOverridesV3) KnowledgeRegistry.RestoreSubjectOverride(item.ToRegistration(), item.domainId);
             knowledgeFrameworkSchemaVersion = Math.Max(knowledgeFrameworkSchemaVersion, CurrentV3SchemaVersion);
         }
@@ -837,6 +925,13 @@ namespace KnowledgeFramework
             return result;
         }
 
+        internal void RemoveAccrualV3(string key)
+        {
+            if (key.NullOrEmpty()) return;
+            accrualV3.RemoveAll(item => item?.key == key);
+            accrualV3Index.Remove(key);
+        }
+
         internal KnowledgeSharedExpertiseStateRecord SharedExpertiseV3(string namespaceId, string domainId, string trackId, Pawn pawn, bool create)
         {
             string key = SharedExpertiseKey(namespaceId, domainId, trackId, pawn);
@@ -858,6 +953,10 @@ namespace KnowledgeFramework
         internal IEnumerable<KnowledgeMilestoneStateRecord> MilestoneRecordsV3(string domainId, string subjectId = null, Pawn pawn = null) =>
             milestonesV3.Where(item => item != null && item.domainId == domainId && (subjectId.NullOrEmpty() || item.subjectId == subjectId) &&
                 (pawn == null || item.pawn == pawn));
+
+        internal IEnumerable<KnowledgeMilestoneStateRecord> MilestoneRecordsForScopeV3(string domainId, string subjectId, Pawn pawn, bool colony) =>
+            milestonesV3.Where(item => item != null && item.domainId == domainId && item.subjectId == subjectId &&
+                item.pawn == (colony ? null : pawn));
 
         internal IEnumerable<KnowledgeSubjectRelationStateRecord> RelationRecordsV3(string domainId, string subjectId = null) =>
             relationsV3.Where(item => item != null && (domainId.NullOrEmpty() || item.domainId == domainId || item.toDomainId == domainId) &&
@@ -940,13 +1039,146 @@ namespace KnowledgeFramework
             contextFacetsV3.RemoveAll(item => item?.domainId == domainId);
             milestonesV3.RemoveAll(item => item?.domainId == domainId);
             relationsV3.RemoveAll(item => item?.domainId == domainId || item?.toDomainId == domainId);
-            accrualV3.RemoveAll(item => item?.domainId == domainId);
+            accrualV3.RemoveAll(item => item?.domainId == domainId ||
+                item?.domainId.NullOrEmpty() == true && item.key != null && item.key.StartsWith(domainId + "\n", StringComparison.Ordinal));
             subjectOverridesV3.RemoveAll(item => item?.domainId == domainId);
             sharedExpertiseV3.RemoveAll(item => item?.domainId == domainId);
             RebuildV3Indexes();
         }
 
         private static string SharedExpertiseKey(string namespaceId, string domainId, string trackId, Pawn pawn) => namespaceId + "\n" + domainId + "\n" + trackId + "\n" + (pawn?.thingIDNumber ?? 0);
+
+        private static string MeasurementIdentity(KnowledgeMeasurementRecord value)
+        {
+            if (value == null) return string.Empty;
+            return string.Join("\n", value.domainId, value.subjectId, value.facetId, value.claimId, value.observer?.thingIDNumber ?? 0,
+                value.scope, value.contextTypeId, value.contextId, value.valueType, value.ToValue().StableKey(), value.quality,
+                value.evidenceWeight, value.confidenceFactor, value.disposition, value.source, value.sourceInstanceId,
+                value.methodId, value.reasonId, value.specimenId, value.summary, value.tick, value.documented, value.revealed);
+        }
+
+        private static void MergeMilestone(KnowledgeMilestoneStateRecord target, KnowledgeMilestoneStateRecord source)
+        {
+            target.available |= source.available;
+            target.started |= source.started;
+            target.interrupted |= source.interrupted;
+            target.completed |= source.completed;
+            target.startTick = target.startTick == 0 ? source.startTick : source.startTick == 0 ? target.startTick : Math.Min(target.startTick, source.startTick);
+            target.completionTick = Math.Max(target.completionTick, source.completionTick);
+            target.progress = Math.Max(target.progress, source.progress);
+            target.bestHistoricalValue = Math.Max(target.bestHistoricalValue, source.bestHistoricalValue);
+            if (source.revision >= target.revision)
+            {
+                target.interruptionReason = source.interruptionReason ?? target.interruptionReason;
+                target.completingPawn = source.completingPawn ?? target.completingPawn;
+                target.revision = source.revision;
+            }
+        }
+
+        private static void NormalizeAccrual(KnowledgeAccrualStateRecord item)
+        {
+            item.key = item.key?.Trim();
+            string[] legacyParts = item.key?.Split(new[] { '\n' }, StringSplitOptions.None);
+            bool currentLayout = false;
+            if (legacyParts != null && legacyParts.Length > 1)
+            {
+                item.domainId = item.domainId.NullOrEmpty() ? legacyParts[0] : item.domainId;
+                item.subjectId = item.subjectId.NullOrEmpty() ? legacyParts[1] : item.subjectId;
+                int parsedPawn = 0;
+                currentLayout = legacyParts.Length > 5 && (legacyParts[4] == "P" || legacyParts[4] == "C") &&
+                    int.TryParse(legacyParts[5], out parsedPawn);
+                if (currentLayout)
+                {
+                    if (item.policyNamespace.NullOrEmpty()) item.policyNamespace = legacyParts[2];
+                    if (item.facetId.NullOrEmpty()) item.facetId = legacyParts[3];
+                    if (legacyParts[4] == "C") item.colony = true;
+                    if (item.pawnId == 0) item.pawnId = parsedPawn;
+                }
+                else if (item.facetId.NullOrEmpty() && legacyParts.Length > 2)
+                    item.facetId = legacyParts[2];
+            }
+            item.domainId = item.domainId?.Trim();
+            item.subjectId = item.subjectId?.Trim();
+            item.observationId = item.observationId?.Trim();
+            item.policyNamespace = item.policyNamespace?.Trim();
+            item.facetId = item.facetId?.Trim();
+            item.sourceInstanceId = item.sourceInstanceId?.Trim();
+            item.specimenId = item.specimenId?.Trim();
+            item.contextKey = item.contextKey?.Trim();
+            KnowledgeAccrualPolicy policy = KnowledgeRegistry.Schema(item.domainId)?.Observation(item.observationId ?? item.policyNamespace)?.accrualPolicy;
+            if (currentLayout && policy != null)
+            {
+                int dimension = 6;
+                if (policy.uniquePerSourceInstance || policy.uniquePerPawnAndSourceInstance)
+                {
+                    if (item.sourceInstanceId.NullOrEmpty() && legacyParts.Length > dimension) item.sourceInstanceId = legacyParts[dimension];
+                    dimension++;
+                }
+                if (policy.uniquePerSubjectAndContext && item.contextKey.NullOrEmpty() && legacyParts.Length > dimension)
+                    item.contextKey = legacyParts[dimension];
+            }
+            item.policyNamespace = item.policyNamespace.NullOrEmpty() ? (item.observationId.NullOrEmpty() ? "legacy" : item.observationId) : item.policyNamespace;
+            item.observationId = item.observationId.NullOrEmpty() ? (item.policyNamespace == "legacy" ? null : item.policyNamespace) : item.observationId;
+            item.facetId = item.facetId.NullOrEmpty() ? "legacy" : item.facetId;
+            item.contextKey = item.contextKey.NullOrEmpty() ? "<global>" : item.contextKey;
+            item.count = Math.Max(0, Math.Min(100000000, item.count));
+            item.dailyCount = Math.Max(0, Math.Min(item.count, item.dailyCount));
+            item.successCount = Math.Max(0, Math.Min(item.count, item.successCount));
+            item.failureCount = Math.Max(0, Math.Min(item.count - item.successCount, item.failureCount));
+            item.day = Math.Max(0, item.day);
+            item.lastTick = Math.Max(0, item.lastTick);
+            item.pawnId = Math.Max(0, item.pawnId);
+            item.sourceInstanceIds = (item.sourceInstanceIds ?? new List<string>()).Concat(new[] { item.sourceInstanceId })
+                .Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            item.contextKeys = (item.contextKeys ?? new List<string>()).Concat(new[] { item.contextKey })
+                .Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            KnowledgeObservationDef policyDefinition = KnowledgeRegistry.Schema(item.domainId)?.Observation(item.observationId ?? item.policyNamespace);
+            policy = policyDefinition?.accrualPolicy;
+            if (item.facetId == "legacy" && policyDefinition?.facetIds != null && policyDefinition.facetIds.Count > 0)
+                item.facetId = policyDefinition.facetIds.FirstOrDefault(value => !value.NullOrEmpty()) ?? item.facetId;
+            item.key = policy != null
+                ? KnowledgeAccrualService.BuildKey(item.domainId, item.subjectId, item.facetId, item.colony, item.pawnId,
+                    item.sourceInstanceId, item.contextKey, policy, item.policyNamespace)
+                : item.key.NullOrEmpty()
+                    ? string.Join("\n", new[] { item.domainId ?? string.Empty, item.subjectId ?? string.Empty,
+                        item.policyNamespace, item.facetId, item.colony ? "C" : "P", item.pawnId.ToString() })
+                    : item.key;
+        }
+
+        private static void MergeAccrual(KnowledgeAccrualStateRecord target, KnowledgeAccrualStateRecord source)
+        {
+            target.count = Math.Max(target.count, source.count);
+            target.dailyCount = target.day == source.day ? Math.Max(target.dailyCount, source.dailyCount) :
+                target.lastTick >= source.lastTick ? target.dailyCount : source.dailyCount;
+            target.successCount = Math.Max(target.successCount, source.successCount);
+            target.failureCount = Math.Max(target.failureCount, source.failureCount);
+            target.sourceInstanceIds = target.sourceInstanceIds.Concat(source.sourceInstanceIds ?? new List<string>())
+                .Concat(new[] { source.sourceInstanceId }).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            target.contextKeys = target.contextKeys.Concat(source.contextKeys ?? new List<string>())
+                .Concat(new[] { source.contextKey }).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            if (source.lastTick > target.lastTick || source.lastTick == target.lastTick && string.CompareOrdinal(source.lastSource, target.lastSource) > 0)
+            {
+                target.lastTick = source.lastTick;
+                target.lastSource = source.lastSource;
+                target.sourceInstanceId = source.sourceInstanceId;
+                target.specimenId = source.specimenId;
+                target.contextKey = source.contextKey;
+                target.day = source.day;
+            }
+            NormalizeAccrual(target);
+        }
+
+        private static void MergeMigration(KnowledgeMigrationStateRecord target, KnowledgeMigrationStateRecord source)
+        {
+            if (source.version > target.version ||
+                source.version == target.version && source.committed && !target.committed ||
+                source.version == target.version && source.committed == target.committed && source.tick > target.tick)
+            {
+                target.version = source.version;
+                target.committed = source.committed;
+                target.tick = source.tick;
+            }
+        }
     }
 
     internal static class KnowledgeV3PersistenceBridge

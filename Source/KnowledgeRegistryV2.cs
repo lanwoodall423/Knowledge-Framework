@@ -460,6 +460,33 @@ namespace KnowledgeFramework
         private static bool ValidateSchema(KnowledgeSchema schema)
         {
             bool valid = true;
+            if (!Enum.IsDefined(typeof(KnowledgeStageAggregationMode), schema.stageAggregationMode))
+            {
+                AddIssue("schema.stage.aggregation", schema.id, "Stage aggregation mode is not defined; use LegacySumMax or Balanced.");
+                valid = false;
+            }
+            if (schema.stageAggregationMode == KnowledgeStageAggregationMode.Balanced &&
+                schema.stages.Any(item => item.minimumKnowledge > 100f))
+            {
+                AddIssue("schema.stage.aggregation.threshold", schema.id,
+                    "Balanced stage minimumKnowledge values must be from zero through 100 because balanced knowledge is a normalized percentage.");
+                valid = false;
+            }
+            foreach (KnowledgeStageSchema stage in schema.stages)
+            {
+                if (!KnowledgeMath.IsFinite(stage.minimumKnowledge) || stage.minimumKnowledge < 0f)
+                {
+                    AddIssue("schema.stage.knowledge", schema.id + "/" + stage.id,
+                        "Stage minimumKnowledge must be finite and nonnegative.");
+                    valid = false;
+                }
+                if (!KnowledgeMath.IsFinite(stage.minimumConfidence) || stage.minimumConfidence < 0f || stage.minimumConfidence > 1f)
+                {
+                    AddIssue("schema.stage.confidence", schema.id + "/" + stage.id,
+                        "Stage minimumConfidence must be finite and between zero and one.");
+                    valid = false;
+                }
+            }
             if (schema.facets.Any(item => !ValidId(item.id)) || schema.facets.GroupBy(item => item.id).Any(group => group.Count() > 1))
             {
                 AddIssue("schema.facet.id", schema.id, "Facet stable IDs must be valid and unique.");
@@ -488,11 +515,21 @@ namespace KnowledgeFramework
                     AddIssue("schema.observation.values", observation?.defName ?? schema.id, "Observation values must be finite and non-negative.");
                     valid = false;
                 }
-                if (observation?.accrualPolicy != null && (observation.accrualPolicy.stateLimit < 0 || observation.accrualPolicy.stateLimit > 4096 ||
-                    observation.accrualPolicy.cooldownTicks < 0 || observation.accrualPolicy.dailyCap < 0 || observation.accrualPolicy.lifetimeCap < 0 ||
-                    !KnowledgeMath.IsFinite(observation.accrualPolicy.diminishingReturns) || observation.accrualPolicy.diminishingReturns < 0f || observation.accrualPolicy.diminishingReturns > 1f))
+                KnowledgeAccrualPolicy accrual = observation?.accrualPolicy;
+                float[] accrualMultipliers = accrual == null ? Array.Empty<float>() : new[] { accrual.diminishingReturns, accrual.firstObservationBonus,
+                    accrual.firstSuccessBonus, accrual.firstFailureBonus, accrual.differentSpecimenBonus, accrual.differentContextBonus,
+                    accrual.independentSourceConfidenceBonus, accrual.repeatedSourceConfidencePenalty };
+                if (accrual != null && (accrual.stateLimit <= 0 || accrual.stateLimit > 4096 || accrual.cooldownTicks < 0 || accrual.dailyCap < 0 || accrual.dailyCap > 100000000 ||
+                    accrual.lifetimeCap < 0 || accrual.lifetimeCap > 100000000 ||
+                    !KnowledgeMath.IsFinite(accrual.diminishingReturns) || accrual.diminishingReturns < 0f || accrual.diminishingReturns > 1f ||
+                    accrualMultipliers.Any(value => !KnowledgeMath.IsFinite(value) || value < 0f || value > 100f)))
                 {
-                    AddIssue("schema.observation.accrual", observation?.defName ?? schema.id, "Accrual policies must be finite and bounded.");
+                    AddIssue("schema.observation.accrual", observation?.defName ?? schema.id, "Accrual policies must use finite bounded multipliers/caps and stateLimit >= 1; zero is invalid because it cannot retain policy history.");
+                    valid = false;
+                }
+                if (observation?.witnessDistribution?.policy == KnowledgeWitnessDistributionPolicy.PartyShared)
+                {
+                    AddIssue("schema.observation.witnesses", observation.defName ?? schema.id, "PartyShared witness distribution is unsupported; use WitnessesReduced or Custom.");
                     valid = false;
                 }
             }
@@ -501,7 +538,8 @@ namespace KnowledgeFramework
                 if (claim == null || !ValidId(claim.StableId) || !KnowledgeMath.IsFinite(claim.halfLifeTicks) || claim.halfLifeTicks < 0f ||
                     !KnowledgeMath.IsFinite(claim.provisionalConfidence) || claim.provisionalConfidence < 0f || claim.provisionalConfidence > 1f ||
                     claim.measurementHistoryLimit < 1 || claim.provenanceLimit < 0 ||
-                    !claim.facetId.NullOrEmpty() && schema.Facet(claim.facetId) == null)
+                    !claim.facetId.NullOrEmpty() && schema.Facet(claim.facetId) == null ||
+                    claim.stalenessPolicy == KnowledgeClaimStalenessPolicy.Contextual)
                 {
                     AddIssue("schema.claim.values", claim?.defName ?? schema.id, "Claim values and facet references must be valid.");
                     valid = false;
@@ -517,9 +555,12 @@ namespace KnowledgeFramework
                 if (archetype == null || !ValidId(archetype.StableId) || schema.archetypes.Count(item => item != null && item.StableId == archetype.StableId) > 1 ||
                     (archetype.applicableFacetIds ?? new List<string>()).Distinct().Count() != (archetype.applicableFacetIds ?? new List<string>()).Count ||
                     (archetype.applicableFacetIds ?? new List<string>()).Any(id => schema.Facet(id) == null) ||
-                    (archetype.applicableClaimIds ?? new List<string>()).Any(id => schema.Claim(id) == null))
+                    (archetype.applicableClaimIds ?? new List<string>()).Any(id => schema.Claim(id) == null) ||
+                    archetype.contextual || (archetype.discoveryStageIds ?? new List<string>()).Count > 0 ||
+                    (archetype.observationIds ?? new List<string>()).Count > 0 || (archetype.effectIds ?? new List<string>()).Count > 0 ||
+                    (archetype.expertiseTrackIds ?? new List<string>()).Count > 0)
                 {
-                    AddIssue("schema.archetype", archetype?.defName ?? schema.id, "Archetypes must reference existing, uniquely applicable facets and claims.");
+                    AddIssue("schema.archetype", archetype?.defName ?? schema.id, "Archetypes must reference existing, uniquely applicable facets and claims; contextual and restriction fields are unsupported.");
                     valid = false;
                 }
             }
@@ -584,9 +625,9 @@ namespace KnowledgeFramework
             foreach (KnowledgeMilestoneTrackDef track in schema.milestoneTracks)
                 foreach (KnowledgeMilestoneDef milestone in track?.milestones ?? new List<KnowledgeMilestoneDef>())
                 {
-                    if (milestone == null || !ValidId(milestone.StableId) || milestone.sustainedTicks < 0)
+                    if (milestone == null || !ValidId(milestone.StableId) || milestone.sustainedTicks < 0 || !milestone.customEvaluatorId.NullOrEmpty())
                     {
-                        AddIssue("schema.milestone", track?.defName ?? schema.id, "Milestone IDs and sustained durations must be valid.");
+                        AddIssue("schema.milestone", track?.defName ?? schema.id, "Milestone IDs and sustained durations must be valid; custom evaluators are unsupported.");
                         valid = false;
                     }
                     ValidateRequirementGroup(milestone?.requirements, schema.id, "milestone/" + (milestone?.StableId ?? "null"), ref valid);
@@ -623,9 +664,10 @@ namespace KnowledgeFramework
             }
             if (schema.transmission != null &&
                 (!KnowledgeMath.IsFinite(schema.transmission.knowledgeEfficiency) || schema.transmission.knowledgeEfficiency < 0f || schema.transmission.knowledgeEfficiency > 1f ||
-                 !KnowledgeMath.IsFinite(schema.transmission.confidenceEfficiency) || schema.transmission.confidenceEfficiency < 0f || schema.transmission.confidenceEfficiency > 1f))
+                 !KnowledgeMath.IsFinite(schema.transmission.confidenceEfficiency) || schema.transmission.confidenceEfficiency < 0f || schema.transmission.confidenceEfficiency > 1f ||
+                 schema.transmission.model != KnowledgeSharingModel.Immediate))
             {
-                AddIssue("schema.transmission.values", schema.id, "Transmission efficiencies must be finite values from zero to one.");
+                AddIssue("schema.transmission.values", schema.id, "Transmission efficiencies must be finite values from zero to one; transmission model is unsupported, use the domain sharingModel.");
                 valid = false;
             }
             return valid;
@@ -634,7 +676,8 @@ namespace KnowledgeFramework
         private static bool ValidateRequirementGroup(KnowledgeRequirementGroup group, string schemaDomain, string owner, ref bool valid, int depth = 0)
         {
             if (group == null) return true;
-            if (depth > 16 || group.minimumCount < 0 || !KnowledgeMath.IsFinite(group.minimumWeight) || group.minimumWeight < 0f)
+            if (depth > 16 || group.minimumCount < 0 || !KnowledgeMath.IsFinite(group.minimumWeight) || group.minimumWeight < 0f ||
+                !Enum.IsDefined(typeof(KnowledgeRequirementGroupMode), group.mode))
             {
                 AddIssue("schema.requirement.group", owner, "Requirement groups must be bounded and use finite thresholds.");
                 valid = false;
@@ -642,9 +685,21 @@ namespace KnowledgeFramework
             foreach (KnowledgeRequirement requirement in group.requirements ?? new List<KnowledgeRequirement>())
             {
                 if (requirement == null || !KnowledgeMath.IsFinite(requirement.minimum) || !KnowledgeMath.IsFinite(requirement.maximum) ||
-                    requirement.minimum < 0f || requirement.maximum < 0f || !KnowledgeMath.IsFinite(requirement.weight) || requirement.weight < 0f)
+                    requirement.minimum < 0f || requirement.maximum < 0f || requirement.maximum > 0f && requirement.maximum < requirement.minimum ||
+                    !KnowledgeMath.IsFinite(requirement.weight) || requirement.weight < 0f)
                 {
                     AddIssue("schema.requirement.values", owner, "Requirement values must be finite and non-negative.");
+                    valid = false;
+                }
+                if (requirement != null && (requirement.kind.ToString() == "Context" || requirement.kind.ToString() == "RelatedClaim"))
+                {
+                    AddIssue("schema.requirement.unsupported-kind", owner, "Requirement kind '" + requirement.kind + "' is unsupported; use an explicit facet or claim requirement.");
+                    valid = false;
+                }
+                if (requirement != null && (!Enum.IsDefined(typeof(KnowledgeRequirementKind), requirement.kind) ||
+                    !Enum.IsDefined(typeof(KnowledgeRequirementComparison), requirement.comparison)))
+                {
+                    AddIssue("schema.requirement.enum", owner, "Requirement kind and comparison must be supported enum values.");
                     valid = false;
                 }
                 if (requirement != null && !requirement.domainId.NullOrEmpty() && Schema(requirement.domainId) == null)

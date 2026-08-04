@@ -49,7 +49,7 @@ namespace KnowledgeFramework
             bool met = sample.conditionMet && requirementsMet && PreviousMilestonesComplete(track, milestone, sample, component);
             int tick = Find.TickManager?.TicksGame ?? 0;
             KnowledgeMilestoneState before = ToState(record, sample.domainId, sample.subjectId, track.StableId, milestone.StableId, sample.pawn, sample.context);
-            if (record.completed && !(track.repeatable || milestone.repeatable)) return true;
+            if (record.completed && (milestone.permanent || !(track.repeatable || milestone.repeatable))) return true;
             if (!met)
             {
                 if (!record.started) return false;
@@ -57,7 +57,8 @@ namespace KnowledgeFramework
                 record.interrupted = true;
                 record.available = false;
                 record.interruptionReason = sample.interruptionReason ?? "condition failed";
-                if (milestone.pauseBehavior == KnowledgeMilestonePauseBehavior.Interrupt || milestone.resetBehavior == KnowledgeMilestoneResetBehavior.OnInterruption)
+                if (milestone.pauseBehavior == KnowledgeMilestonePauseBehavior.Interrupt || milestone.pauseBehavior == KnowledgeMilestonePauseBehavior.Reset ||
+                    milestone.resetBehavior == KnowledgeMilestoneResetBehavior.OnInterruption || milestone.resetBehavior == KnowledgeMilestoneResetBehavior.OnFailure)
                 {
                     record.started = false;
                     record.progress = 0f;
@@ -128,6 +129,9 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             KnowledgeMilestoneStateRecord record = component?.MilestoneV3(domainId, subjectId, trackId, milestoneId, pawn, context, false);
             if (record == null) return false;
+            KnowledgeMilestoneTrackDef track = KnowledgeRegistry.Schema(domainId)?.milestoneTracks.FirstOrDefault(item => item.StableId == trackId);
+            KnowledgeMilestoneDef milestone = track?.milestones?.FirstOrDefault(item => item?.StableId == milestoneId);
+            if (milestone?.permanent == true && record.completed) return false;
             record.available = false;
             record.started = false;
             record.interrupted = false;
@@ -219,8 +223,10 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             KnowledgeSubjectRelationTypeDef type = Type(relation.relationTypeId);
             if (type.parentage && WouldCycle(relation)) return false;
+            string inverseTypeId = type.inverseTypeId.NullOrEmpty() ? type.StableId : type.inverseTypeId;
+            if (addInverse && (type.symmetric || !type.inverseTypeId.NullOrEmpty()) && Type(inverseTypeId) == null) return false;
             component.AddRelationV3(relation);
-            if (addInverse && type.symmetric)
+            if (addInverse && (type.symmetric || !type.inverseTypeId.NullOrEmpty()))
             {
                 KnowledgeSubjectRelation inverse = new KnowledgeSubjectRelation
                 {
@@ -228,7 +234,7 @@ namespace KnowledgeFramework
                     fromSubjectId = relation.toSubjectId,
                     toDomainId = relation.domainId,
                     toSubjectId = relation.fromSubjectId,
-                    relationTypeId = relation.relationTypeId,
+                    relationTypeId = inverseTypeId,
                     role = relation.role,
                     order = relation.order,
                     revealed = relation.revealed,
@@ -260,7 +266,10 @@ namespace KnowledgeFramework
         {
             List<string> issues = new List<string>();
             foreach (KnowledgeSubjectRelationTypeDef type in Types.Values)
+            {
                 if (type.parentage && type.inverseTypeId == type.StableId) issues.Add("relation inverse self-cycle: " + type.StableId);
+                if (!type.inverseTypeId.NullOrEmpty() && Type(type.inverseTypeId) == null) issues.Add("relation inverse type missing: " + type.StableId);
+            }
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component != null && KnowledgeGraphValidation.HasCycle(component.RelationRecordsV3(null).Where(item => Type(item.relationTypeId)?.parentage == true)
                 .Select(item => new KeyValuePair<string, string>(item.domainId + ":" + item.fromSubjectId, item.toDomainId + ":" + item.toSubjectId))))
@@ -316,7 +325,11 @@ namespace KnowledgeFramework
         {
             if (pawn == null || amount <= 0f || !KnowledgeMath.IsFinite(weight) || weight <= 0f || Namespace(namespaceId) == null) return;
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
-            KnowledgeSharedExpertiseStateRecord record = component?.SharedExpertiseV3(namespaceId, domainId, trackId, pawn, true);
+            KnowledgeExpertiseNamespaceDef definition = Namespace(namespaceId);
+            KnowledgeSharedExpertiseStateRecord record = component?.SharedExpertiseV3(namespaceId, domainId, trackId, pawn, false);
+            if (record == null && component != null &&
+                component.SharedExpertiseRecordsV3(namespaceId, pawn).Count() >= Math.Max(1, Math.Min(4096, definition.contributionLimit))) return;
+            record = record ?? component?.SharedExpertiseV3(namespaceId, domainId, trackId, pawn, true);
             if (record == null) return;
             record.amount = Math.Min(100000000f, record.amount + amount * Math.Min(10f, weight));
             record.revision = component.TouchV3();
