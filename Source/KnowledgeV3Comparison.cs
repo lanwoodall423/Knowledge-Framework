@@ -76,7 +76,9 @@ namespace KnowledgeFramework
                 catch (Exception exception) { KnowledgeLog.ErrorOnce("comparison-provider:" + providerId, "A comparison provider failed.", exception); }
             }
             KnowledgeDiagnostics.RecordComparison(stopwatch?.ElapsedTicks ?? 0L);
-            return new KnowledgeComparisonSnapshot(domainId, firstSubjectId, secondSubjectId, facets, rows);
+            KnowledgeComparisonSchema comparison = ComparisonFor(domainId, firstSubjectId);
+            return new KnowledgeComparisonSnapshot(domainId, firstSubjectId, secondSubjectId, facets, rows,
+                comparison?.id, comparison?.label.NullOrEmpty() == false ? comparison.label : comparison?.id);
         }
 
         public static KnowledgeStructuredComparisonSnapshot CompareMany(string domainId, IReadOnlyList<string> subjectIds,
@@ -147,7 +149,9 @@ namespace KnowledgeFramework
                 try { rows.AddRange(provider(domainId, ids, pawn, scope, context) ?? Enumerable.Empty<KnowledgeComparisonRow>()); }
                 catch (Exception exception) { KnowledgeLog.ErrorOnce("comparison-provider:" + providerId, "A comparison provider failed.", exception); }
             }
-            return new KnowledgeStructuredComparisonSnapshot(domainId, ids, rows);
+            KnowledgeComparisonSchema comparison = comparisons.FirstOrDefault();
+            return new KnowledgeStructuredComparisonSnapshot(domainId, ids, rows, comparison?.id,
+                comparison == null ? null : comparison.label.NullOrEmpty() ? comparison.id : comparison.label);
         }
 
         private static KnowledgeComparisonSchema ComparisonFor(string domainId, string subjectId)

@@ -111,7 +111,7 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null || pawn == null)
             {
-                failures.Add("v3 active game and pawn required");
+                failures.Add("v3 active game and pawn required (expected=active GameComponent and non-null Pawn actual=missing)");
                 return new KnowledgeVerificationResult(passed, failures);
             }
             KnowledgeContextRegistry.RegisterType(new KnowledgeContextTypeDef { defName = "VerificationRegion", stableId = "verification.region", label = "Region" }, true);
@@ -129,6 +129,10 @@ namespace KnowledgeFramework
                 parentTypeId = "verification.region",
                 allowFallback = false
             }, true);
+            KnowledgeContextRegistry.RegisterPresentationProvider("verification.region",
+                new VerificationContextPresentationProvider(), true);
+            KnowledgeContextRegistry.RegisterPresentationProvider("verification.region.child",
+                new VerificationContextPresentationProvider(), true);
             KnowledgeRelationService.RegisterType(new KnowledgeSubjectRelationTypeDef { defName = "VerificationParent", stableId = "verification.parent", parentage = true }, true);
             KnowledgeExpertiseNamespaceDef namespaceDef = new KnowledgeExpertiseNamespaceDef { defName = "VerificationField", stableId = "verification.field", adept = 1f, expert = 2f, master = 3f };
             KnowledgeSharedExpertiseService.RegisterNamespace(namespaceDef, true);
@@ -137,7 +141,7 @@ namespace KnowledgeFramework
             KnowledgeFacetDef secret = Facet("secret", 100f);
             secret.hiddenUntilRevealed = true;
             secret.revealKnowledge = 100f;
-            secret.revealConfidence = 1f;
+            secret.revealConfidence = 0.4f;
             KnowledgeClaimDef size = Claim("size", KnowledgeClaimValueType.Float, KnowledgeClaimAggregation.Highest, "biology");
             KnowledgeClaimDef traits = Claim("traits", KnowledgeClaimValueType.SetOfIds, KnowledgeClaimAggregation.Union, "biology");
             size.label = "Size";
@@ -148,8 +152,7 @@ namespace KnowledgeFramework
                 defName = "specimen",
                 stableId = "specimen",
                 applicableFacetIds = new List<string> { "biology", "identity", "secret" },
-                applicableClaimIds = new List<string> { "size", "traits" },
-                categoryId = "generated"
+                applicableClaimIds = new List<string> { "size", "traits" }
             };
             KnowledgeObservationDef recipe = new KnowledgeObservationDef
             {
@@ -168,7 +171,8 @@ namespace KnowledgeFramework
                 expertiseOutcomes = new List<KnowledgeExpertiseOutcome>
                 {
                     new KnowledgeExpertiseOutcome { trackId = "field", expertise = 2f, namespaceId = "verification.field" }
-                }
+                },
+                accrualPolicy = new KnowledgeAccrualPolicy { lifetimeCap = 1, stateLimit = 8 }
             };
             KnowledgeObservationDef contextless = new KnowledgeObservationDef
             {
@@ -245,6 +249,20 @@ namespace KnowledgeFramework
                 stateLimit = 2
             });
             bounded.facetIds.Add("biology");
+            KnowledgeObservationDef legacyUnique = AccrualObservation("legacy-unique", new KnowledgeAccrualPolicy
+            {
+                uniquePerSourceInstance = true,
+                lifetimeCap = 2,
+                stateLimit = 4
+            });
+            legacyUnique.facetIds.Add("identity");
+            KnowledgeObservationDef legacyCap = AccrualObservation("legacy-cap", new KnowledgeAccrualPolicy
+            {
+                uniquePerSubjectAndContext = true,
+                lifetimeCap = 2,
+                stateLimit = 4
+            });
+            legacyCap.facetIds.Add("identity");
             KnowledgeMilestoneTrackDef track = new KnowledgeMilestoneTrackDef
             {
                 defName = "progress",
@@ -262,17 +280,19 @@ namespace KnowledgeFramework
                 facets = new[] { identity, biology, secret },
                 claims = new[] { size, traits },
                 archetypes = new[] { specimen },
-                observations = new[] { recipe, contextless, cooldown, daily, lifetime, noOp, diminishing, firstOutcome, distinct, bounded },
+                observations = new[] { recipe, contextless, cooldown, daily, lifetime, noOp, diminishing, firstOutcome, distinct, bounded, legacyUnique, legacyCap },
                 expertiseTracks = new[] { field },
                 milestoneTracks = new[] { track },
                 expertiseNamespaces = new[] { namespaceDef },
                 subjectResolver = id => id == "source" || id == "child" ? new KnowledgeSubjectRegistration { id = id, label = id, archetypeId = "specimen" } : null,
                 subjectSource = () => new[]
                 {
-                    new KnowledgeSubjectRegistration { id = "source", label = "Source", archetypeId = "specimen" },
-                    new KnowledgeSubjectRegistration { id = "child", label = "Child", archetypeId = "specimen" },
-                    new KnowledgeSubjectRegistration { id = "hidden-subject", label = "Hidden Subject", archetypeId = "specimen", state = KnowledgeSubjectState.Hidden }
-                },
+                     new KnowledgeSubjectRegistration { id = "source", label = "Source", archetypeId = "specimen" },
+                     new KnowledgeSubjectRegistration { id = "child", label = "Child", archetypeId = "specimen" },
+                     new KnowledgeSubjectRegistration { id = "hidden-subject", label = "Hidden Subject", archetypeId = "specimen", state = KnowledgeSubjectState.Hidden },
+                     new KnowledgeSubjectRegistration { id = "archived-subject", label = "Archived Subject", archetypeId = "specimen", state = KnowledgeSubjectState.Archived },
+                     new KnowledgeSubjectRegistration { id = "missing-subject", label = "Missing Subject", archetypeId = "specimen", state = KnowledgeSubjectState.MissingContent }
+                 },
                 source = "verification-v3"
             };
             KnowledgeRegistrationOptions options = new KnowledgeRegistrationOptions { source = "verification-v3", priority = int.MaxValue, conflict = KnowledgeRegistrationConflict.Replace };
@@ -305,11 +325,15 @@ namespace KnowledgeFramework
                     Check("balanced equivalent stage eligibility", oneStage == "balanced" && severalStage == "exact", ref passed, failures);
                     Check("empty facet cannot advance stage", emptyStage == "base", ref passed, failures);
                     Check("poorly supported facet blocks confidence stage", confidenceStage == "base", ref passed, failures);
+                    Check("global stage ignores contextual-only stage", KnowledgeDiscovery.CurrentStage(AggregationDomainId, "many", pawn,
+                        KnowledgeScope.Personal, context) == "exact", ref passed, failures);
                     KnowledgeContextKey aggregationContext = new KnowledgeContextKey("verification.region", "aggregation");
                     for (int i = 0; i < 10; i++)
                     {
                         SubmitStageKnowledge(pawn, "many", "a", 10f, false, aggregationContext);
                         SubmitStageKnowledge(pawn, "many", "b", 10f, false, aggregationContext);
+                        SubmitStageKnowledge(pawn, "context-only", "a", 10f, false, aggregationContext);
+                        SubmitStageKnowledge(pawn, "context-only", "b", 10f, false, aggregationContext);
                     }
                     string contextualStageBeforeRebuild = KnowledgeDiscovery.CurrentStage(AggregationDomainId, "many", pawn,
                         KnowledgeScope.Personal, aggregationContext);
@@ -317,8 +341,38 @@ namespace KnowledgeFramework
                     string contextualStageAfterRebuild = KnowledgeDiscovery.CurrentStage(AggregationDomainId, "many", pawn,
                         KnowledgeScope.Personal, aggregationContext);
                     Check("stage survives save/index reconstruction", contextualStageBeforeRebuild == contextualStageAfterRebuild &&
-                        contextualStageAfterRebuild == "exact", ref passed, failures);
-                }
+                        contextualStageAfterRebuild == "contextual", ref passed, failures);
+                    Check("contextual evidence does not advance global stage", KnowledgeDiscovery.CurrentStage(AggregationDomainId,
+                        "context-only", pawn) == "base" && KnowledgeDiscovery.CurrentStage(AggregationDomainId, "context-only", pawn,
+                        KnowledgeScope.Personal, aggregationContext) == "contextual", ref passed, failures);
+                    KnowledgeContextKey childAggregationContext = new KnowledgeContextKey("verification.region.child", "aggregation");
+                    KnowledgeStageSnapshot exactContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId, "many", pawn,
+                        KnowledgeScope.Personal, aggregationContext, KnowledgeContextFallbackMode.ExactOnly);
+                    KnowledgeStageSnapshot parentContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId, "many", pawn,
+                        KnowledgeScope.Personal, childAggregationContext, KnowledgeContextFallbackMode.ParentThenGlobal);
+                    KnowledgeStageSnapshot globalContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId, "many", pawn,
+                        KnowledgeScope.Personal, new KnowledgeContextKey("verification.region", "other"),
+                        KnowledgeContextFallbackMode.ParentThenGlobal);
+                     Check("contextual stage exact parent global lookup", exactContextStage.stageId == "contextual" &&
+                         !exactContextStage.usedContextFallback && parentContextStage.stageId == "contextual" &&
+                         parentContextStage.usedContextFallback && parentContextStage.resolvedContext.Equals(aggregationContext) &&
+                         globalContextStage.stageId == "exact" && globalContextStage.usedContextFallback &&
+                         globalContextStage.resolvedContext.IsEmpty &&
+                         !component.StageRecordsV3(AggregationDomainId, "many", pawn, false).Any(item => item.Context.Equals(childAggregationContext)),
+                         ref passed, failures);
+                     KnowledgeBrowserRow contextualBrowserRow = KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                     {
+                         domainId = AggregationDomainId,
+                         pawn = pawn,
+                         scope = KnowledgeScope.Personal,
+                         context = childAggregationContext,
+                         fallback = KnowledgeContextFallbackMode.ParentThenGlobal
+                     }, "many");
+                     Check("browser contextual stage presentation", contextualBrowserRow != null &&
+                         contextualBrowserRow.currentStageId == "contextual" && contextualBrowserRow.usedContextFallback &&
+                         contextualBrowserRow.requestedContext.Equals(childAggregationContext) &&
+                         contextualBrowserRow.resolvedContext.Equals(aggregationContext), ref passed, failures);
+                 }
                 KnowledgeTransactionResult recipeResult = KnowledgeEngine.Submit(new KnowledgeTransaction { source = "v3" }.Add(new KnowledgeObservation
                 {
                     observer = pawn,
@@ -340,6 +394,10 @@ namespace KnowledgeFramework
                 Check("typed claim persistence", sizeSnapshot.observationCount == 1 && sizeSnapshot.value?.numericValue == 42f, ref passed, failures);
                 Check("context facet", KnowledgeContextQuery.Facet(DomainId, "source", "biology", context, pawn).amount >= 7f, ref passed, failures);
                 Check("shared expertise", KnowledgeSharedExpertiseService.Snapshot("verification.field", pawn).total > 0f, ref passed, failures);
+                KnowledgeAccrualStateRecord studyAccrual = component.AccrualRecordsV3().FirstOrDefault(item => item != null &&
+                    item.domainId == DomainId && item.policyNamespace == "study");
+                Check("one logical recipe event consumes accrual once", studyAccrual != null && studyAccrual.count == 1,
+                    ref passed, failures);
                 Check("global personal claim apply/query", Observe(pawn, "biology", KnowledgeContextKey.Empty, false, true, null, "global-personal", new KnowledgeMeasurement
                 {
                     claimId = "size",
@@ -398,10 +456,26 @@ namespace KnowledgeFramework
                 });
                 Check("browser visibility and labels", visibleRows.Any(item => item.subject.id == "source") &&
                     !visibleRows.Any(item => item.subject.id == "hidden-subject") &&
+                    !visibleRows.Any(item => item.subject.id == "archived-subject" || item.subject.id == "missing-subject") &&
                     !browserRow.applicableFacets.Any(item => item.id == "secret") &&
                     !browserRow.claims.Any(item => item.claimId == "traits") &&
                     KnowledgeBrowserLabels.Claim(KnowledgeRegistry.Schema(DomainId), "size") == "Size",
                     ref passed, failures);
+                Check("hidden facet search does not disclose", !KnowledgeBrowserModels.Build(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext,
+                    search = "secret"
+                }).Any() && !KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext,
+                    includeHidden = true
+                }, "source").applicableFacets.Any(item => item.id == "secret"), ref passed, failures);
                 IReadOnlyList<KnowledgeBrowserRow> developerRows = KnowledgeBrowserModels.Build(new KnowledgeBrowserFilter
                 {
                     domainId = DomainId,
@@ -413,10 +487,71 @@ namespace KnowledgeFramework
                 });
                 Check("browser developer visibility", developerRows.Any(item => item.subject.id == "hidden-subject") &&
                     developerRows.Any(item => item.applicableFacets.Any(facet => facet.id == "secret")), ref passed, failures);
+                KnowledgeTransactionResult secretObservation = KnowledgeEngine.Submit(new KnowledgeObservation
+                {
+                    observer = pawn,
+                    domainId = DomainId,
+                    subjectId = "source",
+                    facetId = "secret",
+                    directKnowledge = 100f,
+                    disposition = KnowledgeEvidenceDisposition.Supporting,
+                    source = "v3-verification",
+                    observationId = "reveal-secret"
+                });
+                KnowledgeBrowserRow revealedRow = KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext,
+                    fallback = KnowledgeContextFallbackMode.ParentThenGlobal
+                }, "source");
+                KnowledgeBrowserRow developerHiddenRow = KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext,
+                    fallback = KnowledgeContextFallbackMode.ParentThenGlobal,
+                    developerMode = true,
+                    includeHidden = true
+                }, "source");
+                KnowledgeBrowserRow hiddenSubjectRow = KnowledgeBrowserModels.BuildSubject(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext
+                }, "hidden-subject");
+                Check("revealed hidden facet is normally visible", secretObservation.success && revealedRow != null &&
+                    revealedRow.applicableFacets.Any(item => item.id == "secret") &&
+                    KnowledgeBrowserLabels.Facet(revealedRow.applicableFacets.First(item => item.id == "secret")) == "Secret" &&
+                    (hiddenSubjectRow == null || !hiddenSubjectRow.applicableFacets.Any(item => item.id == "secret")),
+                    ref passed, failures);
+                Check("developer hidden facet override remains explicit", developerHiddenRow != null &&
+                    developerHiddenRow.applicableFacets.Any(item => item.id == "secret"), ref passed, failures);
                 KnowledgeFacetSnapshotV2 blockedContext = KnowledgeContextQuery.Facet(DomainId, "source", "biology",
                     new KnowledgeContextKey("verification.region.nofallback", "shared"), pawn, KnowledgeScope.Personal,
                     KnowledgeContextFallbackMode.ParentThenGlobal);
                 Check("context allowFallback control", blockedContext.amount == 0f, ref passed, failures);
+                IReadOnlyList<KnowledgeContextKey> contextOptions = KnowledgeBrowserModels.ContextOptions(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext
+                }, "source");
+                Check("browser context selector and labels", contextOptions.Contains(KnowledgeContextKey.Empty) &&
+                    contextOptions.Contains(childContext) &&
+                    KnowledgeBrowserLabels.ContextValue(childContext, DomainId, "source", pawn, KnowledgeScope.Personal) == "Shared region" &&
+                    KnowledgeBrowserLabels.ContextSelection(childContext, DomainId, "source", pawn, KnowledgeScope.Personal).Contains("Shared region"),
+                    ref passed, failures);
+                IReadOnlyList<KnowledgeContextKey> cachedContextOptionsBefore = browserWindow.ContextOptionsForVerification(KnowledgeRegistry.Schema(DomainId));
+                KnowledgeContextKey cacheContext = new KnowledgeContextKey("verification.region", "cache-only");
+                Check("context option cache invalidates on new knowledge", Observe(pawn, "biology", cacheContext, false, true,
+                    null, "cache-context").success &&
+                    browserWindow.ContextOptionsForVerification(KnowledgeRegistry.Schema(DomainId)).Count > cachedContextOptionsBefore.Count,
+                    ref passed, failures);
                 Check("global claim requirement", KnowledgeRequirementService.Evaluate(new KnowledgeRequirement
                 {
                     kind = KnowledgeRequirementKind.ClaimExists,
@@ -554,11 +689,63 @@ namespace KnowledgeFramework
                 legacyAccrual.dailyCount = 99;
                 legacyAccrual.sourceInstanceIds = new List<string> { "duplicate", "duplicate", null };
                 legacyAccrual.contextKeys = new List<string> { "<global>", "<global>" };
+                string legacyCapKey = string.Join("\n", DomainId, "source", "identity", string.Empty);
+                KnowledgeAccrualStateRecord oldCap = component.AccrualV3(legacyCapKey, true);
+                oldCap.domainId = DomainId;
+                oldCap.subjectId = "source";
+                oldCap.count = 2;
+                oldCap.dailyCount = 2;
+                oldCap.lastTick = Find.TickManager?.TicksGame ?? 0;
+                string provableLegacyKey = string.Join("\n", DomainId, "source", "identity", "legacy-source");
+                KnowledgeAccrualStateRecord provableLegacy = component.AccrualV3(provableLegacyKey, true);
+                provableLegacy.domainId = DomainId;
+                provableLegacy.subjectId = "source";
+                provableLegacy.observationId = "legacy-unique";
+                provableLegacy.policyNamespace = "legacy-unique";
+                provableLegacy.facetId = "identity";
+                provableLegacy.pawnId = pawn?.thingIDNumber ?? 0;
+                provableLegacy.sourceInstanceId = "legacy-source";
+                provableLegacy.count = 1;
                 component.RebuildV3Indexes();
                 KnowledgeAccrualStateRecord rebuiltLegacy = component.AccrualRecordsV3().FirstOrDefault(item => item != null &&
                     item.domainId == DomainId && item.policyNamespace == "cooldown" && item.subjectId == "source");
                 Check("save/index rebuild normalization", rebuiltLegacy != null && rebuiltLegacy.count == 0 &&
                     rebuiltLegacy.dailyCount == 0 && rebuiltLegacy.sourceInstanceIds.Count == 1 && rebuiltLegacy.contextKeys.Count == 1,
+                    ref passed, failures);
+                KnowledgeObservationDef provableDefinition = KnowledgeRegistry.Schema(DomainId)?.Observation("legacy-unique");
+                string provableModernKey = KnowledgeAccrualService.BuildKey(DomainId, "source", "identity", false,
+                    pawn?.thingIDNumber ?? 0, "legacy-source", "<global>", provableDefinition?.accrualPolicy, "legacy-unique");
+                KnowledgeAccrualStateRecord rebuiltProvable = component.AccrualRecordsV3().FirstOrDefault(item => item != null &&
+                    item.legacyKey == provableLegacyKey);
+                Check("legacy accrual migration canonicalizes provable ownership", rebuiltProvable != null &&
+                    rebuiltProvable.key == provableModernKey && rebuiltProvable.ownershipMetadataComplete, ref passed, failures);
+                KnowledgeAccrualStateRecord rebuiltOldCap = component.AccrualRecordsV3().FirstOrDefault(item => item != null &&
+                    item.legacyKey == legacyCapKey);
+                Observe(pawn, "identity", KnowledgeContextKey.Empty, false, true, null, null, null, "legacy-cap");
+                int oldCapCount = rebuiltOldCap?.count ?? -1;
+                component.RebuildV3Indexes();
+                component.RebuildV3Indexes();
+                KnowledgeAccrualStateRecord idempotentOldCap = component.AccrualRecordsV3().FirstOrDefault(item => item != null &&
+                    item.legacyKey == legacyCapKey);
+                Check("legacy accrual migration preserves caps and is idempotent", rebuiltOldCap != null && oldCapCount == 2 &&
+                    idempotentOldCap != null && idempotentOldCap.count == 2 && idempotentOldCap.keyFormatVersion == 1 &&
+                    idempotentOldCap.outcomeHistoryComplete == false, ref passed, failures);
+                KnowledgeObservationDef legacyCapDefinition = KnowledgeRegistry.Schema(DomainId)?.Observation("legacy-cap");
+                string duplicateModernKey = KnowledgeAccrualService.BuildKey(DomainId, "source", "identity", false,
+                    pawn?.thingIDNumber ?? 0, null, "<global>", legacyCapDefinition?.accrualPolicy, "legacy-cap");
+                List<KnowledgeAccrualStateRecord> rawAccrual = component.AccrualRecordsV3() as List<KnowledgeAccrualStateRecord>;
+                if (rawAccrual != null)
+                {
+                    rawAccrual.Add(new KnowledgeAccrualStateRecord { key = duplicateModernKey, domainId = DomainId,
+                        subjectId = "source", observationId = "legacy-cap", policyNamespace = "legacy-cap", facetId = "identity",
+                        count = 1, dailyCount = 1, keyFormatVersion = 2, outcomeHistoryComplete = true, ownershipMetadataComplete = true });
+                    rawAccrual.Add(new KnowledgeAccrualStateRecord { key = duplicateModernKey, domainId = DomainId,
+                        subjectId = "source", observationId = "legacy-cap", policyNamespace = "legacy-cap", facetId = "identity",
+                        count = 4, dailyCount = 4, keyFormatVersion = 2, outcomeHistoryComplete = true, ownershipMetadataComplete = true });
+                }
+                component.RebuildV3Indexes();
+                Check("legacy migration deduplicates bounded state", component.AccrualRecordsV3().Count(item => item != null &&
+                    item.key == duplicateModernKey) == 1 && component.AccrualRecordsV3().FirstOrDefault(item => item?.key == duplicateModernKey)?.count == 4,
                     ref passed, failures);
                 Check("accrual ownership metadata", component.AccrualRecordsV3().Where(item => item != null && item.domainId == DomainId &&
                     item.policyNamespace != "bounded" && item.key != "legacy-accrual").All(item => !item.subjectId.NullOrEmpty() &&
@@ -622,7 +809,7 @@ namespace KnowledgeFramework
             }
             catch (Exception exception)
             {
-                failures.Add("v3 game verification exception: " + exception);
+                failures.Add("v3 game verification exception (expected=no exception actual=" + exception + ")");
             }
             finally
             {
@@ -694,7 +881,8 @@ namespace KnowledgeFramework
                 new KnowledgeSubjectRegistration { id = "one", label = "One", applicableFacetIds = new[] { "a" } },
                 new KnowledgeSubjectRegistration { id = "many", label = "Many", applicableFacetIds = new[] { "a", "b" } },
                 new KnowledgeSubjectRegistration { id = "empty", label = "Empty", applicableFacetIds = new[] { "a", "empty" } },
-                new KnowledgeSubjectRegistration { id = "confidence", label = "Confidence", applicableFacetIds = new[] { "a", "b" } }
+                new KnowledgeSubjectRegistration { id = "confidence", label = "Confidence", applicableFacetIds = new[] { "a", "b" } },
+                new KnowledgeSubjectRegistration { id = "context-only", label = "Context only", applicableFacetIds = new[] { "a", "b" } }
             };
             return new KnowledgeDomainRegistration
             {
@@ -706,7 +894,31 @@ namespace KnowledgeFramework
                 {
                     new KnowledgeStageDef { defName = "base", order = 0 },
                     new KnowledgeStageDef { defName = "balanced", order = 1, minimumKnowledge = 75f, minimumConfidence = 0.8f },
-                    exactRequirements
+                    exactRequirements,
+                    new KnowledgeStageDef
+                    {
+                        defName = "contextual",
+                        order = 3,
+                        minimumKnowledge = 75f,
+                        minimumConfidence = 0.8f,
+                        contextSensitive = true,
+                        requirementGroup = new KnowledgeRequirementGroup
+                        {
+                            mode = KnowledgeRequirementGroupMode.All,
+                            requirements = new List<KnowledgeRequirement>
+                            {
+                                new KnowledgeRequirement
+                                {
+                                    kind = KnowledgeRequirementKind.Knowledge,
+                                    facetId = "b",
+                                    minimum = 100f,
+                                    contextTypeId = "verification.region",
+                                    contextId = "aggregation",
+                                    allowContextFallback = false
+                                }
+                            }
+                        }
+                    }
                 },
                 subjectResolver = id => subjects.FirstOrDefault(item => item.id == id),
                 subjectSource = () => subjects,
@@ -764,10 +976,36 @@ namespace KnowledgeFramework
             tick = tick
         };
 
+        private sealed class VerificationContextPresentationProvider : IKnowledgeContextPresentationProvider
+        {
+            public IEnumerable<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+            {
+                if (domainId != DomainId && domainId != AggregationDomainId) return Enumerable.Empty<KnowledgeContextKey>();
+                return new[]
+                {
+                    new KnowledgeContextKey("verification.region", "alpha"),
+                    new KnowledgeContextKey("verification.region", "shared"),
+                    new KnowledgeContextKey("verification.region", "aggregation"),
+                    new KnowledgeContextKey("verification.region.child", "shared")
+                };
+            }
+
+            public string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+            {
+                switch (context.stableId)
+                {
+                    case "alpha": return "Alpha region";
+                    case "shared": return "Shared region";
+                    case "aggregation": return "Aggregation region";
+                    default: return null;
+                }
+            }
+        }
+
         private static void Check(string name, bool condition, ref int passed, List<string> failures)
         {
             if (condition) passed++;
-            else failures.Add(name);
+            else failures.Add(name + " (expected=true, actual=false)");
         }
     }
 }

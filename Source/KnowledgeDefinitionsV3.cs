@@ -171,6 +171,34 @@ namespace KnowledgeFramework
         public override string ToString() => IsEmpty ? string.Empty : typeId + ":" + stableId;
     }
 
+    /// <summary>Resolved stage state for a requested context. A non-empty resolvedContext can be inherited through fallback.</summary>
+    public sealed class KnowledgeStageSnapshot
+    {
+        public readonly string domainId;
+        public readonly string subjectId;
+        public readonly string stageId;
+        public readonly Pawn pawn;
+        public readonly KnowledgeScope scope;
+        public readonly KnowledgeContextKey requestedContext;
+        public readonly KnowledgeContextKey resolvedContext;
+        public readonly bool usedContextFallback;
+        public readonly bool contextSensitive;
+
+        internal KnowledgeStageSnapshot(string domainId, string subjectId, string stageId, Pawn pawn, KnowledgeScope scope,
+            KnowledgeContextKey requestedContext, KnowledgeContextKey resolvedContext, bool usedContextFallback, bool contextSensitive)
+        {
+            this.domainId = domainId;
+            this.subjectId = subjectId;
+            this.stageId = stageId;
+            this.pawn = pawn;
+            this.scope = scope;
+            this.requestedContext = requestedContext;
+            this.resolvedContext = resolvedContext;
+            this.usedContextFallback = usedContextFallback;
+            this.contextSensitive = contextSensitive;
+        }
+    }
+
     /// <summary>A finite, explicitly typed value. Runtime object serialization is intentionally unsupported.</summary>
     public sealed class KnowledgeClaimValue
     {
@@ -319,8 +347,11 @@ namespace KnowledgeFramework
     public sealed class KnowledgeSubjectArchetypeDef : Def
     {
         public string stableId;
+        [Obsolete("Archetype category metadata is not a runtime presentation source; configure it on the subject.")]
         public string categoryId;
+        [Obsolete("Archetype icon metadata is not a runtime presentation source; configure it on the subject.")]
         public string iconPath;
+        [Obsolete("Archetype template metadata is not a runtime subject source; configure it on the subject.")]
         public string templateSubjectId;
         [Obsolete("Archetype contextuality is unsupported; context is explicit on observations and queries.")]
         public bool contextual;
@@ -440,6 +471,17 @@ namespace KnowledgeFramework
         public bool contextualByDefault;
 
         public string StableId => stableId.NullOrEmpty() ? defName : stableId;
+    }
+
+    /// <summary>
+    /// Optional player-facing context integration. The framework never derives a
+    /// value label from stableId, so a consumer must explicitly expose values it
+    /// considers known and safe to show.
+    /// </summary>
+    public interface IKnowledgeContextPresentationProvider
+    {
+        IEnumerable<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope);
+        string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope);
     }
 
     public sealed class KnowledgeMilestoneTrackDef : Def
@@ -830,12 +872,17 @@ namespace KnowledgeFramework
         public readonly string domainId;
         public readonly IReadOnlyList<string> subjectIds;
         public readonly IReadOnlyList<KnowledgeComparisonRow> rows;
+        public readonly string schemaId;
+        public readonly string schemaLabel;
 
-        internal KnowledgeStructuredComparisonSnapshot(string domainId, IEnumerable<string> subjectIds, IEnumerable<KnowledgeComparisonRow> rows)
+        internal KnowledgeStructuredComparisonSnapshot(string domainId, IEnumerable<string> subjectIds, IEnumerable<KnowledgeComparisonRow> rows,
+            string schemaId = null, string schemaLabel = null)
         {
             this.domainId = domainId;
             this.subjectIds = new ReadOnlyCollection<string>((subjectIds ?? Enumerable.Empty<string>()).ToList());
             this.rows = new ReadOnlyCollection<KnowledgeComparisonRow>((rows ?? Enumerable.Empty<KnowledgeComparisonRow>()).ToList());
+            this.schemaId = schemaId;
+            this.schemaLabel = schemaLabel;
         }
     }
 }

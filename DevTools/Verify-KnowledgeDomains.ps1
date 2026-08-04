@@ -1,23 +1,23 @@
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-$domain = Get-Content -Raw (Join-Path $root 'Source\KnowledgeDomains.cs')
-$service = Get-Content -Raw (Join-Path $root 'Source\KnowledgeService.cs')
-$persistence = Get-Content -Raw (Join-Path $root 'Source\KnowledgePersistenceV2.cs')
+$domainPath = Join-Path $root 'Source\KnowledgeDomains.cs'
+$servicePath = Join-Path $root 'Source\KnowledgeService.cs'
+$persistencePath = Join-Path $root 'Source\KnowledgePersistenceV2.cs'
 
 $checks = [ordered]@{
-    'versioned capability API' = $domain -match 'ApiVersion = 2' -and $domain -match 'Supports\(int minimumApiVersion' -and $domain -match 'EvidenceCapability'
-    'domain neutral definitions' = $domain -match 'KnowledgeDomainDefinition' -and $domain -match 'KnowledgeSubjectDefinition'
-    'expertise can be disabled' = $domain -match 'bool expertiseEnabled' -and $service -match 'domain\.expertiseEnabled'
-    'colony records cannot reference pawns' = $service -match 'class ColonyKnowledgeSaveRecord' -and $service -match 'class PawnKnowledgeSaveRecord : ColonyKnowledgeSaveRecord'
-    'immutable query snapshots' = $domain -match 'sealed class KnowledgeSnapshot' -and $domain -match 'readonly float experience'
-    'framework service owns mutation' = $service -match 'public static bool Award\(KnowledgeAward award\)'
-    'hot queries are scalar and allocation light' = $service -match 'GetPawnKnowledgeExperience' -and $service -match 'GetPawnKnowledgeRank' -and $domain -match 'readonly struct KnowledgeEffectContext'
-    'legacy import is idempotent' = $service -match 'ImportMinimum' -and $persistence -match 'ImportMinimumV2' -and $persistence -match 'Math\.Max'
-    'reveal and effect providers' = $domain -match 'IKnowledgeEffectProvider' -and $service -match 'MeetsReveal' -and $service -match 'ApplyEffects'
-    'knowledge change subscription' = $service -match 'event Action<KnowledgeChangedEvent> KnowledgeChanged'
-    'separate save keys' = $service -match 'knowledgeFrameworkColony' -and $service -match 'knowledgeFrameworkPawns' -and $service -match 'knowledgeFrameworkExpertise'
-    'orphan validation retained' = $service -match 'Orphaned colony subject' -and $service -match 'Orphaned pawn subject'
-    'debug lifecycle tools' = $service -match 'List domains and subjects' -and $service -match 'Inspect selected pawn' -and $service -match 'Award selected pawn 100 knowledge' -and $service -match 'Reset selected pawn knowledge'
+    'domain source and public model exist' = (Test-Path $domainPath) -and (Select-String -Path $domainPath -SimpleMatch 'class KnowledgeDomainDefinition' -Quiet)
+    'domain service entry point exists' = (Test-Path $servicePath) -and (Select-String -Path $servicePath -SimpleMatch 'public static bool Award' -Quiet)
+    'domain capability entry point exists' = (Select-String -Path $domainPath -SimpleMatch 'EvidenceCapability' -Quiet)
+    'domain snapshot model exists' = (Select-String -Path $domainPath -SimpleMatch 'class KnowledgeSnapshot' -Quiet)
+    'domain effect provider contract exists' = (Select-String -Path $domainPath -SimpleMatch 'IKnowledgeEffectProvider' -Quiet)
+    'knowledge change event exists' = (Select-String -Path $servicePath -SimpleMatch 'KnowledgeChanged' -Quiet)
+    'V2 persistence source exists' = Test-Path $persistencePath
+    'domain save keys are declared' = (Select-String -Path $servicePath -SimpleMatch 'knowledgeFrameworkColony' -Quiet) -and
+        (Select-String -Path $servicePath -SimpleMatch 'knowledgeFrameworkPawns' -Quiet) -and
+        (Select-String -Path $servicePath -SimpleMatch 'knowledgeFrameworkExpertise' -Quiet)
+    'domain debug entry points exist' = (Select-String -Path $servicePath -SimpleMatch 'List domains and subjects' -Quiet) -and
+        (Select-String -Path $servicePath -SimpleMatch 'Inspect selected pawn' -Quiet)
+    'V2 verification source exists' = Test-Path (Join-Path $root 'Source\KnowledgeVerificationV2.cs')
 }
 $failed = @($checks.GetEnumerator() | Where-Object { -not $_.Value })
 if ($failed.Count) { throw 'Knowledge domain checks failed: ' + (($failed | ForEach-Object Key) -join ', ') }

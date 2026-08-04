@@ -188,6 +188,23 @@ namespace KnowledgeFramework
                 ? "KnowledgeFramework_Unknown".Translate() : Label(type.label, "KnowledgeFramework_Unknown");
         }
 
+        public static string ContextValue(KnowledgeContextKey context, string domainId = null, string subjectId = null,
+            Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal)
+        {
+            if (context.IsEmpty) return "KnowledgeFramework_GlobalContext".Translate();
+            string value = KnowledgeContextRegistry.ValueLabel(context, domainId, subjectId, pawn, scope)?.Trim();
+            return value.NullOrEmpty() || value == context.stableId || value == context.typeId || value == context.ToString()
+                ? "KnowledgeFramework_UnknownContextValue".Translate() : value.Translate();
+        }
+
+        public static string ContextSelection(KnowledgeContextKey context, string domainId = null, string subjectId = null,
+            Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal)
+        {
+            if (context.IsEmpty) return "KnowledgeFramework_GlobalContext".Translate();
+            return "KnowledgeFramework_ContextSelection".Translate(Context(context),
+                ContextValue(context, domainId, subjectId, pawn, scope));
+        }
+
         public static string Rank(KnowledgeRank rank) => ("KnowledgeFramework_Rank_" + rank).Translate();
 
         private static string Label(string value, string fallbackKey) =>
@@ -196,6 +213,31 @@ namespace KnowledgeFramework
 
     public static class KnowledgeBrowserModels
     {
+        public static IReadOnlyList<KnowledgeContextKey> ContextOptions(KnowledgeBrowserFilter filter, string subjectId = null,
+            bool includeRequestedContext = true)
+        {
+            if (filter == null || filter.domainId.NullOrEmpty()) return new[] { KnowledgeContextKey.Empty };
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(filter.domainId);
+            if (schema == null) return new[] { KnowledgeContextKey.Empty };
+            Pawn pawn = filter.scope == KnowledgeScope.Colony ? null : filter.pawn;
+            List<KnowledgeContextKey> persisted = new List<KnowledgeContextKey>();
+            GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
+            if (component != null && !subjectId.NullOrEmpty())
+                persisted.AddRange(component.ContextKeysV3(schema.id, subjectId, pawn, filter.scope == KnowledgeScope.Colony));
+            List<KnowledgeContextKey> result = new List<KnowledgeContextKey> { KnowledgeContextKey.Empty };
+            result.AddRange(KnowledgeContextRegistry.KnownContexts(schema.id, subjectId, pawn, filter.scope, persisted));
+            if (includeRequestedContext && !filter.context.IsEmpty && !filter.context.IsPartial && KnowledgeContextRegistry.Type(filter.context.typeId) != null &&
+                !result.Contains(filter.context)) result.Add(filter.context);
+            return result.Distinct().ToList();
+        }
+
+        public static bool HasContextualKnowledge(KnowledgeBrowserFilter filter, string subjectId = null)
+        {
+            KnowledgeSchema schema = filter == null ? null : KnowledgeRegistry.Schema(filter.domainId);
+            return schema != null && (schema.stages.Any(item => item.contextSensitive) ||
+                ContextOptions(filter, subjectId).Count > 1);
+        }
+
         public static IReadOnlyList<KnowledgeBrowserRow> Build(KnowledgeBrowserFilter filter)
         {
             if (filter == null || filter.domainId.NullOrEmpty()) return Array.Empty<KnowledgeBrowserRow>();
@@ -236,6 +278,8 @@ namespace KnowledgeFramework
 
             KnowledgeRevealResult presentation = KnowledgeDiscovery.Present(schema.id, subjectId, null, filter.pawn, filter.scope,
                 filter.context, filter.fallback);
+            KnowledgeStageSnapshot stage = KnowledgeDiscovery.StageSnapshot(schema.id, subjectId, filter.pawn, filter.scope,
+                filter.context, filter.fallback);
             if (!filter.developerMode && !filter.includeUnknown && !presentation.identified) return null;
 
             IReadOnlyList<KnowledgeFacetSchema> allFacets = KnowledgeRegistry.ApplicableFacets(schema.id, subjectId);
@@ -264,10 +308,10 @@ namespace KnowledgeFramework
             List<KnowledgeSubjectRelation> relations = Relations(schema, subjectId, filter);
             List<KnowledgeInsightProgress> insights = schema.insights.Select(insight => KnowledgeInsightService.Progress(
                 insight.defName, schema.id, subjectId, filter.pawn, filter.scope, filter.context)).ToList();
-            KnowledgeStageSchema nextStage = NextStage(schema, presentation.stageId);
+            KnowledgeStageSchema nextStage = NextStage(schema, stage?.stageId);
             IReadOnlyList<string> unmet = nextStage == null ? Array.Empty<string>() : KnowledgeDiscovery.UnmetStageRequirements(
-                schema.id, subjectId, nextStage.id, filter.pawn, filter.scope, filter.context);
-            bool usedFallback = snapshots.Any(item => item.usedContextFallback) || claims.Any(item =>
+                schema.id, subjectId, nextStage.id, filter.pawn, filter.scope, filter.context, filter.fallback);
+            bool usedFallback = stage?.usedContextFallback == true || snapshots.Any(item => item.usedContextFallback) || claims.Any(item =>
                 !filter.context.IsEmpty && !item.context.Equals(filter.context)) || milestones.Any(item =>
                     !filter.context.IsEmpty && !item.context.Equals(filter.context)) || relations.Any(item =>
                     !filter.context.IsEmpty && !item.context.Equals(filter.context));
@@ -282,6 +326,11 @@ namespace KnowledgeFramework
                 break;
             }
             if (!hasResolvedContext) resolvedContext = filter.context;
+            if (stage != null && stage.usedContextFallback)
+            {
+                resolvedContext = stage.resolvedContext;
+                hasResolvedContext = true;
+            }
             if (!filter.includeUnknown && !presentation.identified && completeness <= 0f) return null;
             string displayLabel = KnowledgeBrowserLabels.SubjectLabel(subject, presentation, filter.developerMode);
             string displayDescription = KnowledgeBrowserLabels.SubjectDescription(subject, presentation, filter.developerMode);
@@ -291,7 +340,7 @@ namespace KnowledgeFramework
                         ? "KnowledgeFramework_Hidden".Translate() : null;
             return new KnowledgeBrowserRow(subject, state, facets, completeness, confidence, evidenceCount, recency, usedFallback, milestones,
                 relations, badge.NullOrEmpty() ? null : new[] { badge }, filter.context, resolvedContext, displayLabel, displayDescription,
-                presentation.identified, presentation.stageId, values, claims, insights, unmet);
+                presentation.identified, stage?.stageId ?? presentation.stageId, values, claims, insights, unmet);
         }
 
         private static bool LifecycleVisible(KnowledgeSubjectSnapshot subject, KnowledgeBrowserFilter filter)
@@ -307,9 +356,14 @@ namespace KnowledgeFramework
         private static bool FacetVisible(string domainId, string subjectId, KnowledgeFacetSchema facet, KnowledgeBrowserFilter filter)
         {
             if (facet == null) return false;
-            if (filter.developerMode || !facet.hiddenUntilRevealed) return true;
-            return filter.includeHidden && KnowledgeDiscovery.Present(domainId, subjectId, facet.id, filter.pawn, filter.scope,
-                filter.context, filter.fallback).revealed;
+            if (!facet.hiddenUntilRevealed) return true;
+            KnowledgeRevealResult presentation = KnowledgeDiscovery.Present(domainId, subjectId, facet.id, filter.pawn, filter.scope,
+                filter.context, filter.fallback);
+            if (presentation.revealed) return true;
+            // includeHidden is a model/debug escape hatch, never a normal player
+            // filter. Keeping this gate here makes counts, claims, and details
+            // agree about unrevealed content.
+            return filter.developerMode && filter.includeHidden;
         }
 
         private static KnowledgeStageSchema NextStage(KnowledgeSchema schema, string currentStageId)

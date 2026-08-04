@@ -116,6 +116,7 @@ namespace KnowledgeFramework
         public bool approximateWhenUncertain = true;
         public float revealKnowledge;
         public float revealConfidence;
+        [Obsolete("relatedFacetIds is unsupported; use explicit facet requirements or observations.")]
         public List<string> relatedFacetIds;
         public List<string> claimIds;
 

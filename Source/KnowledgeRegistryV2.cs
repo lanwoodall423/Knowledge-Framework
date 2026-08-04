@@ -16,12 +16,19 @@ namespace KnowledgeFramework
             public int lastAccess;
         }
 
+        private sealed class SubjectRegistrationMetadata
+        {
+            public int priority;
+            public string source;
+        }
+
         private static readonly Dictionary<string, KnowledgeSchema> Schemas = new Dictionary<string, KnowledgeSchema>(StringComparer.Ordinal);
         private static readonly Dictionary<string, KnowledgeSubjectSnapshot> StaticSubjects = new Dictionary<string, KnowledgeSubjectSnapshot>(StringComparer.Ordinal);
         private static readonly Dictionary<string, SubjectCacheEntry> DynamicSubjects = new Dictionary<string, SubjectCacheEntry>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> DomainAliases = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> SubjectAliases = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, KnowledgeSubjectRegistration> SubjectOverrides = new Dictionary<string, KnowledgeSubjectRegistration>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, SubjectRegistrationMetadata> SubjectRegistrationSources = new Dictionary<string, SubjectRegistrationMetadata>(StringComparer.Ordinal);
         private static readonly List<KnowledgeValidationIssue> Issues = new List<KnowledgeValidationIssue>();
         private static readonly HashSet<string> IssueKeys = new HashSet<string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, List<KnowledgeInsightDef>> InsightsByDependency = new Dictionary<string, List<KnowledgeInsightDef>>(StringComparer.Ordinal);
@@ -103,6 +110,7 @@ namespace KnowledgeFramework
         public static bool RegisterSubject(string domainId, KnowledgeSubjectRegistration subject,
             KnowledgeRegistrationOptions options = null)
         {
+            options = options ?? new KnowledgeRegistrationOptions();
             domainId = ResolveDomainId(domainId);
             if (Schema(domainId) == null || subject == null || !ValidId(subject.id))
             {
@@ -110,13 +118,28 @@ namespace KnowledgeFramework
                 return false;
             }
             string key = SubjectKey(domainId, subject.id);
-            if (StaticSubjects.ContainsKey(key) && (options?.conflict ?? KnowledgeRegistrationConflict.Reject) == KnowledgeRegistrationConflict.Reject)
+            if (StaticSubjects.ContainsKey(key) && options.conflict == KnowledgeRegistrationConflict.Reject)
             {
                 AddIssue("registration.subject.duplicate", key, "Duplicate subject registration was rejected.");
                 return false;
             }
+            if (StaticSubjects.ContainsKey(key) && options.conflict == KnowledgeRegistrationConflict.ReplaceIfHigherPriority)
+            {
+                SubjectRegistrationMetadata existing = SubjectRegistrationSources.TryGetValue(key, out SubjectRegistrationMetadata value)
+                    ? value : new SubjectRegistrationMetadata { priority = 0, source = "Defs" };
+                if (options.priority <= existing.priority)
+                {
+                    AddIssue("registration.subject.priority", key, "Subject replacement was rejected because its priority was not higher than the existing registration.");
+                    return false;
+                }
+            }
             StaticSubjects[key] = new KnowledgeSubjectSnapshot(domainId, subject);
             SubjectOverrides[key] = CloneSubject(subject);
+            SubjectRegistrationSources[key] = new SubjectRegistrationMetadata
+            {
+                priority = options.priority,
+                source = options.source ?? subject.source ?? "dynamic"
+            };
             DynamicSubjects.Remove(key);
             revision++;
             KnowledgeUiCache.Reset();
@@ -127,8 +150,11 @@ namespace KnowledgeFramework
         {
             string key = SubjectKey(ResolveDomainId(domainId), ResolveSubjectId(domainId, subjectId));
             if (key == null || !StaticSubjects.TryGetValue(key, out KnowledgeSubjectSnapshot subject) || !subject.dynamic) return false;
+            if (!source.NullOrEmpty() && (!SubjectRegistrationSources.TryGetValue(key, out SubjectRegistrationMetadata metadata) ||
+                metadata.source != source)) return false;
             StaticSubjects.Remove(key);
             SubjectOverrides.Remove(key);
+            SubjectRegistrationSources.Remove(key);
             DynamicSubjects.Remove(key);
             revision++;
             KnowledgeUiCache.Reset();
@@ -144,6 +170,7 @@ namespace KnowledgeFramework
             foreach (string key in StaticSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) StaticSubjects.Remove(key);
             foreach (string key in DynamicSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) DynamicSubjects.Remove(key);
             foreach (string key in SubjectOverrides.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectOverrides.Remove(key);
+            foreach (string key in SubjectRegistrationSources.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectRegistrationSources.Remove(key);
             KnowledgeProviderRegistry.Unregister(domainId);
             KnowledgeV2Ui.Unregister(domainId);
             KnowledgeEffects.Unregister(domainId);
@@ -343,7 +370,10 @@ namespace KnowledgeFramework
         internal static void RestoreSubjectOverride(KnowledgeSubjectRegistration value, string domainId)
         {
             if (value == null || !ValidId(value.id)) return;
-            SubjectOverrides[SubjectKey(ResolveDomainId(domainId), value.id)] = CloneSubject(value);
+            string key = SubjectKey(ResolveDomainId(domainId), value.id);
+            SubjectOverrides[key] = CloneSubject(value);
+            if (!SubjectRegistrationSources.ContainsKey(key))
+                SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = value.source ?? "persisted" };
         }
 
         internal static IReadOnlyList<KnowledgeInsightDef> InsightsFor(string domainId, string facetId)
@@ -455,6 +485,7 @@ namespace KnowledgeFramework
                 return;
             }
             StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, subject));
+            SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = "Defs" };
         }
 
         private static bool ValidateSchema(KnowledgeSchema schema)
@@ -490,6 +521,11 @@ namespace KnowledgeFramework
             if (schema.facets.Any(item => !ValidId(item.id)) || schema.facets.GroupBy(item => item.id).Any(group => group.Count() > 1))
             {
                 AddIssue("schema.facet.id", schema.id, "Facet stable IDs must be valid and unique.");
+                valid = false;
+            }
+            if (schema.facets.Any(item => item.relatedFacetIds != null && item.relatedFacetIds.Count > 0))
+            {
+                AddIssue("schema.facet.related", schema.id, "relatedFacetIds is unsupported; use explicit facet requirements or observations.");
                 valid = false;
             }
             if (schema.stages.Any(item => !ValidId(item.id)) || schema.stages.GroupBy(item => item.id).Any(group => group.Count() > 1) || schema.stages.Zip(schema.stages.Skip(1), (a, b) => a.order >= b.order).Any(value => value))
@@ -539,9 +575,15 @@ namespace KnowledgeFramework
                     !KnowledgeMath.IsFinite(claim.provisionalConfidence) || claim.provisionalConfidence < 0f || claim.provisionalConfidence > 1f ||
                     claim.measurementHistoryLimit < 1 || claim.provenanceLimit < 0 ||
                     !claim.facetId.NullOrEmpty() && schema.Facet(claim.facetId) == null ||
-                    claim.stalenessPolicy == KnowledgeClaimStalenessPolicy.Contextual)
+                    claim.stalenessPolicy == KnowledgeClaimStalenessPolicy.Contextual ||
+                    !Enum.IsDefined(typeof(KnowledgeClaimValueType), claim.valueType) ||
+                    !Enum.IsDefined(typeof(KnowledgeClaimAggregation), claim.aggregation) ||
+                    claim.aggregation == KnowledgeClaimAggregation.ConsumerDefined &&
+                    (claim.consumerAggregationId.NullOrEmpty() || !KnowledgeClaimService.HasAggregator(claim.consumerAggregationId)) ||
+                    !claim.domainId.NullOrEmpty() && ResolveDomainId(claim.domainId) != schema.id)
                 {
-                    AddIssue("schema.claim.values", claim?.defName ?? schema.id, "Claim values and facet references must be valid.");
+                    AddIssue("schema.claim.values", claim?.defName ?? schema.id,
+                        "Claim values, aggregation providers, domain ownership, and facet references must be valid.");
                     valid = false;
                 }
             }
@@ -556,6 +598,7 @@ namespace KnowledgeFramework
                     (archetype.applicableFacetIds ?? new List<string>()).Distinct().Count() != (archetype.applicableFacetIds ?? new List<string>()).Count ||
                     (archetype.applicableFacetIds ?? new List<string>()).Any(id => schema.Facet(id) == null) ||
                     (archetype.applicableClaimIds ?? new List<string>()).Any(id => schema.Claim(id) == null) ||
+                    !archetype.categoryId.NullOrEmpty() || !archetype.iconPath.NullOrEmpty() || !archetype.templateSubjectId.NullOrEmpty() ||
                     archetype.contextual || (archetype.discoveryStageIds ?? new List<string>()).Count > 0 ||
                     (archetype.observationIds ?? new List<string>()).Count > 0 || (archetype.effectIds ?? new List<string>()).Count > 0 ||
                     (archetype.expertiseTrackIds ?? new List<string>()).Count > 0)
@@ -584,6 +627,11 @@ namespace KnowledgeFramework
                     AddIssue("schema.reveal.values", reveal?.defName ?? schema.id, "Reveal thresholds must be finite and valid.");
                     valid = false;
                 }
+                if (reveal != null && !reveal.domainId.NullOrEmpty() && ResolveDomainId(reveal.domainId) != schema.id)
+                {
+                    AddIssue("schema.reveal.domain", reveal.defName ?? schema.id, "Reveal domainId must match its containing domain.");
+                    valid = false;
+                }
             }
             foreach (KnowledgeEffectDef effect in schema.effects)
             {
@@ -593,6 +641,11 @@ namespace KnowledgeFramework
                     !effect.minimumStageId.NullOrEmpty() && schema.Stage(effect.minimumStageId) == null)
                 {
                     AddIssue("schema.effect.values", effect?.defName ?? schema.id, "Effect values and thresholds must be finite and valid.");
+                    valid = false;
+                }
+                if (effect != null && !effect.domainId.NullOrEmpty() && ResolveDomainId(effect.domainId) != schema.id)
+                {
+                    AddIssue("schema.effect.domain", effect.defName ?? schema.id, "Effect domainId must match its containing domain.");
                     valid = false;
                 }
                 ValidateRequirementGroup(effect?.requirements, schema.id, "effect/" + (effect?.defName ?? "null"), ref valid);
@@ -623,6 +676,12 @@ namespace KnowledgeFramework
                 }
             }
             foreach (KnowledgeMilestoneTrackDef track in schema.milestoneTracks)
+            {
+                if (track != null && !track.domainId.NullOrEmpty() && ResolveDomainId(track.domainId) != schema.id)
+                {
+                    AddIssue("schema.milestone.domain", track.defName ?? schema.id, "Milestone track domainId must match its containing domain.");
+                    valid = false;
+                }
                 foreach (KnowledgeMilestoneDef milestone in track?.milestones ?? new List<KnowledgeMilestoneDef>())
                 {
                     if (milestone == null || !ValidId(milestone.StableId) || milestone.sustainedTicks < 0 || !milestone.customEvaluatorId.NullOrEmpty())
@@ -632,6 +691,13 @@ namespace KnowledgeFramework
                     }
                     ValidateRequirementGroup(milestone?.requirements, schema.id, "milestone/" + (milestone?.StableId ?? "null"), ref valid);
                 }
+            }
+            if (schema.transmission != null && !schema.transmission.domainId.NullOrEmpty() &&
+                ResolveDomainId(schema.transmission.domainId) != schema.id)
+            {
+                AddIssue("schema.transmission.domain", schema.id, "Transmission domainId must match its containing domain.");
+                valid = false;
+            }
             if (schema.insights.Any(item => !ValidId(item.defName)) || schema.insights.GroupBy(item => item.defName).Any(group => group.Count() > 1))
             {
                 AddIssue("schema.insight.id", schema.id, "Insight IDs must be valid and unique.");

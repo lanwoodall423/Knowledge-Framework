@@ -36,7 +36,55 @@ namespace KnowledgeFramework
         public static string CurrentStage(string domainId, string subjectId, Pawn pawn = null,
             KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
             KnowledgeContextFallbackMode fallback = KnowledgeContextFallbackMode.ParentThenGlobal) =>
-            CurrentStageForContext(domainId, subjectId, pawn, scope, context, fallback);
+            StageSnapshot(domainId, subjectId, pawn, scope, context, fallback)?.stageId;
+
+        public static KnowledgeStageSnapshot StageSnapshot(string domainId, string subjectId, Pawn pawn = null,
+            KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
+            KnowledgeContextFallbackMode fallback = KnowledgeContextFallbackMode.ParentThenGlobal)
+        {
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
+            KnowledgeSubjectSnapshotV2 legacy = KnowledgeQuery.Subject(domainId, subjectId, pawn, scope);
+            if (schema == null || context.IsPartial)
+                return new KnowledgeStageSnapshot(domainId, subjectId, null, pawn, scope, context, KnowledgeContextKey.Empty, false, false);
+
+            string persistedGlobalStage = legacy?.stageId;
+            if (schema.Stage(persistedGlobalStage)?.contextSensitive == true) persistedGlobalStage = null;
+            string globalStageId = context.IsEmpty && schema.stageAggregationMode == KnowledgeStageAggregationMode.LegacySumMax
+                ? persistedGlobalStage ?? EvaluateStages(schema, domainId, subjectId, pawn, scope, KnowledgeContextKey.Empty,
+                    KnowledgeContextFallbackMode.ExactOnly, legacy?.documented == true, false)
+                : EvaluateStages(schema, domainId, subjectId, pawn, scope, KnowledgeContextKey.Empty,
+                    KnowledgeContextFallbackMode.ExactOnly, legacy?.documented == true, false);
+            string contextualStageId = null;
+            KnowledgeContextKey resolvedContext = KnowledgeContextKey.Empty;
+            bool usedFallback = false;
+            if (schema.stages.Any(item => item.contextSensitive))
+            {
+                KnowledgeStageStateRecord persisted = FindContextualStage(domainId, subjectId, pawn, scope, context, fallback,
+                    schema, out resolvedContext, out usedFallback);
+                contextualStageId = persisted?.stageId;
+                string calculated = EvaluateStages(schema, domainId, subjectId, pawn, scope, context, fallback,
+                    legacy?.documented == true, true);
+                if (IsLater(schema, calculated, contextualStageId)) contextualStageId = calculated;
+                if (context.IsEmpty && contextualStageId.NullOrEmpty())
+                    contextualStageId = calculated;
+            }
+            string selected = IsLater(schema, contextualStageId, globalStageId) ? contextualStageId : globalStageId;
+            bool selectedContextual = !selected.NullOrEmpty() && schema.Stage(selected)?.contextSensitive == true;
+            if (selectedContextual && resolvedContext.IsEmpty && !context.IsEmpty)
+            {
+                resolvedContext = context;
+                usedFallback = false;
+            }
+            else if (!selectedContextual && !context.IsEmpty && !globalStageId.NullOrEmpty())
+            {
+                // A global stage is intentionally inherited by contextual views;
+                // expose that fact instead of claiming exact-context progress.
+                resolvedContext = KnowledgeContextKey.Empty;
+                usedFallback = true;
+            }
+            return new KnowledgeStageSnapshot(domainId, subjectId, selected, pawn, scope, context,
+                resolvedContext, usedFallback, selectedContextual);
+        }
 
         public static bool MeetsReveal(string domainId, string subjectId, string revealId, Pawn pawn = null,
             KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
@@ -75,25 +123,84 @@ namespace KnowledgeFramework
                 currentStage, label, description, approximate, subjectIdentified);
         }
 
-        private static string CurrentStageForContext(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope,
-            KnowledgeContextKey context, KnowledgeContextFallbackMode fallback)
+        internal static void RecordStageProgress(GameComponent_KnowledgeFramework component, KnowledgeSchema schema,
+            string domainId, string subjectId, Pawn pawn, bool colony, KnowledgeSubjectStateRecord subject,
+            KnowledgeContextKey context)
         {
-            KnowledgeSubjectSnapshotV2 legacy = KnowledgeQuery.Subject(domainId, subjectId, pawn, scope);
-            KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
-            if (schema == null || context.IsPartial) return null;
-            if (context.IsEmpty && schema.stageAggregationMode == KnowledgeStageAggregationMode.LegacySumMax) return legacy.stageId;
+            if (component == null || schema == null || subject == null || context.IsPartial) return;
+            KnowledgeScope scope = colony ? KnowledgeScope.Colony : KnowledgeScope.Personal;
+            string globalStage = EvaluateStages(schema, domainId, subjectId, pawn, scope, KnowledgeContextKey.Empty,
+                KnowledgeContextFallbackMode.ExactOnly, subject.documented, false);
+            KnowledgeStageSchema currentGlobal = schema.Stage(subject.stageId);
+            if (currentGlobal?.contextSensitive == true) currentGlobal = null;
+            KnowledgeStageSchema selectedGlobal = schema.Stage(globalStage);
+            if (selectedGlobal != null && (currentGlobal == null || selectedGlobal.allowRegression || selectedGlobal.order >= currentGlobal.order))
+                subject.stageId = selectedGlobal.id;
+            else if (currentGlobal == null && subject.stageId != null)
+                subject.stageId = schema.stages.Where(item => !item.contextSensitive).OrderBy(item => item.order)
+                    .Select(item => item.id).FirstOrDefault();
+
+            string contextualStage = EvaluateStages(schema, domainId, subjectId, pawn, scope, context,
+                // Persist only evidence evaluated in the observation's exact
+                // normalized context. Parent/global fallback is a query-time
+                // view and must not materialize inherited progress into the
+                // exact context record.
+                KnowledgeContextFallbackMode.ExactOnly, subject.documented, true);
+            if (contextualStage.NullOrEmpty()) return;
+            KnowledgeStageStateRecord record = component.StageV3(domainId, subjectId, pawn, colony, context, true);
+            KnowledgeStageSchema existing = schema.Stage(record.stageId);
+            KnowledgeStageSchema selected = schema.Stage(contextualStage);
+            if (selected != null && (existing == null || selected.allowRegression || selected.order >= existing.order)) record.stageId = selected.id;
+            record.revision = Math.Max(0, record.revision + 1);
+            record.lastTick = Find.TickManager?.TicksGame ?? 0;
+            component.TouchV3();
+        }
+
+        private static string EvaluateStages(KnowledgeSchema schema, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope,
+            KnowledgeContextKey context, KnowledgeContextFallbackMode fallback, bool documented, bool contextualOnly)
+        {
+            if (schema == null) return null;
             KnowledgeStageAggregate aggregate = KnowledgeStageAggregation.ForSubject(GameComponent_KnowledgeFramework.Current, schema,
                 domainId, subjectId, pawn, scope, context, fallback);
             string current = null;
             foreach (KnowledgeStageSchema stage in schema.stages.OrderBy(item => item.order))
             {
+                if (stage.contextSensitive != contextualOnly) continue;
                 if (aggregate.knowledge < stage.minimumKnowledge || aggregate.confidence < stage.minimumConfidence) continue;
-                if (stage.documented && !legacy.documented) continue;
+                if (stage.documented && !documented) continue;
+                KnowledgeContextKey requirementContext = stage.contextSensitive ? context : KnowledgeContextKey.Empty;
                 if (stage.requirementGroup != null && !KnowledgeRequirementService.Evaluate(stage.requirementGroup, domainId,
-                    subjectId, pawn, scope, context, out _)) continue;
+                    subjectId, pawn, scope, requirementContext, out _)) continue;
                 current = stage.id;
             }
             return current;
+        }
+
+        private static KnowledgeStageStateRecord FindContextualStage(string domainId, string subjectId, Pawn pawn,
+            KnowledgeScope scope, KnowledgeContextKey context, KnowledgeContextFallbackMode fallback, KnowledgeSchema schema,
+            out KnowledgeContextKey resolved, out bool usedFallback)
+        {
+            resolved = KnowledgeContextKey.Empty;
+            usedFallback = false;
+            GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
+            if (component == null) return null;
+            bool colony = scope == KnowledgeScope.Colony;
+            foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, fallback))
+            {
+                KnowledgeStageStateRecord record = component.StageV3(domainId, subjectId, colony ? null : pawn, colony, candidate, false);
+                if (record == null || schema.Stage(record.stageId)?.contextSensitive != true) continue;
+                resolved = candidate;
+                usedFallback = !candidate.Equals(context);
+                return record;
+            }
+            return null;
+        }
+
+        private static bool IsLater(KnowledgeSchema schema, string candidate, string current)
+        {
+            if (candidate.NullOrEmpty()) return false;
+            if (current.NullOrEmpty()) return true;
+            return (schema.Stage(candidate)?.order ?? int.MinValue) > (schema.Stage(current)?.order ?? int.MinValue);
         }
 
         private static bool StageMet(KnowledgeSchema schema, string actualId, string requiredId)

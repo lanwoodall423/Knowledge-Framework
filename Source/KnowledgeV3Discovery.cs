@@ -7,14 +7,15 @@ namespace KnowledgeFramework
     public static partial class KnowledgeDiscovery
     {
         public static IReadOnlyList<string> UnmetStageRequirements(string domainId, string subjectId, string stageId,
-            Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey))
+            Pawn pawn = null, KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
+            KnowledgeContextFallbackMode fallback = KnowledgeContextFallbackMode.ParentThenGlobal)
         {
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             KnowledgeStageSchema stage = schema?.Stage(stageId);
             if (stage == null) return new[] { "KnowledgeFramework_UnknownStage".Translate().ToString() };
             List<string> result = new List<string>();
             KnowledgeStageAggregate aggregate = KnowledgeStageAggregation.ForSubject(GameComponent_KnowledgeFramework.Current, schema,
-                domainId, subjectId, pawn, scope, context, KnowledgeContextFallbackMode.ParentThenGlobal);
+                domainId, subjectId, pawn, scope, context, fallback);
             if (aggregate.knowledge < stage.minimumKnowledge)
                 result.Add("KnowledgeFramework_RequirementKnowledge".Translate(stage.minimumKnowledge.ToString("0.##")));
             if (aggregate.confidence < stage.minimumConfidence)

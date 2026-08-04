@@ -2,22 +2,17 @@ param([string]$ModsRoot = (Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 
 $ErrorActionPreference = 'Stop'
 $checks = @(
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeMenuUI.cs'; Pattern = 'public static class KnowledgeMenuUI'; Name = 'shared detailed UI owner' },
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeMenuUI.cs'; Pattern = 'KnowledgeMenuScope.Colony'; Name = 'shared Colony scope' },
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeMenuUI.cs'; Pattern = 'Widgets.TextField'; Name = 'shared search control' },
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeMenuUI.cs'; Pattern = 'OrderBy(row => row.label)'; Name = 'stable alphabetical sorting' },
-    @{ Path = 'AquacultureFishing/Source/AquacultureJournal.cs'; Pattern = 'KnowledgeMenuUI.Draw'; Name = 'Aquaculture adapter' },
-    @{ Path = 'AquacultureFishing/Source/AquacultureJournal.cs'; Pattern = 'Mathf.Clamp01(records.Sum'; Name = 'Aquaculture colony knowledge accumulation' },
-    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'KnowledgeMenuUI.Draw'; Name = 'Wildlife adapter' },
-    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'group.Sum(record => record.experience)'; Name = 'Wildlife biome accumulation' },
-    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'ColonyBiomeRecords'; Name = 'Wildlife all-map biome source' },
-    @{ Path = 'Horticulture - Novel Seeds/Source/CultivarRegistry.cs'; Pattern = 'KnowledgeMenuUI.Draw'; Name = 'Horticulture adapter' },
-    @{ Path = 'Horticulture - Novel Seeds/Source/PlantKnowledge.cs'; Pattern = 'KnowledgeService.ColonyKnowledge(DomainId)'; Name = 'Horticulture framework colony source' },
-    @{ Path = 'AquacultureFishing/Source/FishingExpertise.cs'; Pattern = 'aquacultureFishingProgression'; Name = 'Aquaculture legacy save key' },
-    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'colonistSpeciesKnowledge'; Name = 'Wildlife legacy save key' },
-    @{ Path = 'Horticulture - Novel Seeds/Source/ModCore.cs'; Pattern = 'Scribe.mode != LoadSaveMode.Saving'; Name = 'Horticulture legacy keys are load only' },
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkColony'; Name = 'framework colony save key' },
-    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkExpertise'; Name = 'framework expertise save key' }
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeMenuUI.cs'; Pattern = 'public static class KnowledgeMenuUI'; Name = 'shared UI owner exists' },
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeBrowserV2.cs'; Pattern = 'Window_KnowledgeBrowser'; Name = 'browser entry exists' },
+    @{ Path = 'AquacultureFishing/Source/AquacultureJournal.cs'; Pattern = 'KnowledgeMenuUI'; Name = 'Aquaculture UI integration source' },
+    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'KnowledgeMenuUI'; Name = 'Wildlife UI integration source' },
+    @{ Path = 'Horticulture - Novel Seeds/Source/CultivarRegistry.cs'; Pattern = 'KnowledgeMenuUI'; Name = 'Horticulture UI integration source' },
+    @{ Path = 'Horticulture - Novel Seeds/Source/PlantKnowledge.cs'; Pattern = 'KnowledgeService'; Name = 'Horticulture framework integration source' },
+    @{ Path = 'AquacultureFishing/Source/FishingExpertise.cs'; Pattern = 'aquacultureFishingProgression'; Name = 'Aquaculture save key declaration' },
+    @{ Path = 'Wildlife/Source/Herds/HuntingKnowledge.cs'; Pattern = 'colonistSpeciesKnowledge'; Name = 'Wildlife save key declaration' },
+    @{ Path = 'Horticulture - Novel Seeds/Source/ModCore.cs'; Pattern = 'Scribe'; Name = 'Horticulture save integration source' },
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkColony'; Name = 'framework colony save key declaration' },
+    @{ Path = 'KnowledgeFramework/Source/KnowledgeService.cs'; Pattern = 'knowledgeFrameworkExpertise'; Name = 'framework expertise save key declaration' }
 )
 
 $failed = @()

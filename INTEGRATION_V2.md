@@ -82,6 +82,41 @@ choice is retained in the immutable schema and is reconstructed from the same
 domain definition/registration on reload, so save/index rebuilding cannot change
 stage eligibility.
 
+### V3 persistence migration
+
+V3 schema version 4 adds contextual stage records and legacy accrual ownership
+metadata. Pre-version-4 accrual keys did not encode scope, policy namespace, or
+complete scope/pawn ownership. Records with a provable current layout are rebuilt into
+the namespaced key and deduplicated deterministically. Ambiguous legacy records
+retain their original key as a compatibility state, preserving counts,
+cooldowns, caps, source/context uniqueness history, specimen/context metadata,
+and diminishing-return count. Runtime lookups consult that state before accepting
+an event and do not assign it arbitrarily to personal or colony scope. Because
+legacy records did not retain success/failure history, first-success and
+first-failure bonuses remain suppressed until a post-upgrade event establishes
+complete history. Rebuild and state-limit enforcement are deterministic and
+idempotent; records whose definitions are temporarily unavailable remain
+preserved under their safe legacy namespace until they can be resolved.
+The additive legacy-key and ownership markers use zero/false defaults for older
+saves, so no additional schema bump is required; normalization derives provable
+metadata without discarding unresolved records.
+
+Non-context-sensitive stages represent global discovery and are written only to
+the compatible V2 subject stage. Context-sensitive stages are stored separately
+per pawn/colony scope and normalized context. Contextual queries use the normal
+exact, parent, and global fallback chain, but a historical global stage is never
+reinterpreted as proof in every context.
+
+### Logical observation accrual
+
+An observation submitted with a recipe, witness, claim, milestone, or expertise
+outcome is one logical event. The transaction assigns one logical event group,
+previews cooldowns/caps/bonuses once, and commits only the owning candidate.
+Derived outcomes retain source, specimen, pawn, subject, and context metadata
+but do not refresh or consume accrual state independently. Separately submitted
+observations receive separate event groups and remain independent; blocked or
+zero-factor groups consume nothing.
+
 ## Sharing and documentation
 
 ```csharp

@@ -49,6 +49,8 @@
   <KnowledgeFramework_GlobalContext>Global context</KnowledgeFramework_GlobalContext>
   <KnowledgeFramework_ContextValue>Context: {0}</KnowledgeFramework_ContextValue>
   <KnowledgeFramework_ContextFallback>Context: {0} (using {1})</KnowledgeFramework_ContextFallback>
+  <KnowledgeFramework_ContextSelection>{0}: {1}</KnowledgeFramework_ContextSelection>
+  <KnowledgeFramework_UnknownContextValue>Unknown value</KnowledgeFramework_UnknownContextValue>
   <KnowledgeFramework_RelationshipDetail>{0} with {1}: {2} confidence</KnowledgeFramework_RelationshipDetail>
   <KnowledgeFramework_RequirementsUnmet>{0} requirements remain for the next stage.</KnowledgeFramework_RequirementsUnmet>
   <KnowledgeFramework_Archived>Archived</KnowledgeFramework_Archived>

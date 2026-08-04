@@ -15,6 +15,8 @@ namespace KnowledgeFramework
         public string subjectId;
         public string facetId;
         public string observationId;
+        /// <summary>Stable identity shared by all outcomes derived from one logical observation.</summary>
+        public string logicalEventId;
         public string methodId;
         public float quality = 1f;
         public float novelty = 1f;
@@ -50,6 +52,8 @@ namespace KnowledgeFramework
         // These are transaction-local gates; they are never serialized or exposed as API state.
         internal bool skipApplication;
         internal bool accrualCommitted;
+        internal bool accrualOwner;
+        internal string logicalEventGroupId;
     }
 
     public sealed class KnowledgeTransaction
@@ -303,15 +307,20 @@ namespace KnowledgeFramework
         public readonly string domainId;
         public readonly string firstSubjectId;
         public readonly string secondSubjectId;
+        public readonly string schemaId;
+        public readonly string schemaLabel;
         public readonly IReadOnlyList<KnowledgeFacetComparison> facets;
         public readonly IReadOnlyList<KnowledgeComparisonRow> rows;
 
         internal KnowledgeComparisonSnapshot(string domainId, string firstSubjectId, string secondSubjectId,
-            IEnumerable<KnowledgeFacetComparison> facets, IEnumerable<KnowledgeComparisonRow> rows = null)
+            IEnumerable<KnowledgeFacetComparison> facets, IEnumerable<KnowledgeComparisonRow> rows = null,
+            string schemaId = null, string schemaLabel = null)
         {
             this.domainId = domainId;
             this.firstSubjectId = firstSubjectId;
             this.secondSubjectId = secondSubjectId;
+            this.schemaId = schemaId;
+            this.schemaLabel = schemaLabel;
             this.facets = new ReadOnlyCollection<KnowledgeFacetComparison>((facets ?? Enumerable.Empty<KnowledgeFacetComparison>()).ToList());
             this.rows = new ReadOnlyCollection<KnowledgeComparisonRow>((rows ?? Enumerable.Empty<KnowledgeComparisonRow>()).ToList());
         }
@@ -530,7 +539,7 @@ namespace KnowledgeFramework
             float multiplier = input.quality * input.novelty * input.repetition * input.sourceReliability / difficulty;
             float configuredKnowledge = input.suppressConfiguredKnowledge ? 0f : observationDef?.baseKnowledge ?? (input.directKnowledge > 0f ? 0f : 1f);
             float configuredExpertise = observationDef?.baseExpertise ?? 0f;
-            float configuredFamiliarity = observationDef?.baseFamiliarity ?? 0f;
+            float configuredFamiliarity = schema.familiarityEnabled ? observationDef?.baseFamiliarity ?? 0f : 0f;
             if (!input.success)
             {
                 configuredKnowledge *= observationDef?.failureKnowledgeFactor ?? 0.5f;
@@ -555,7 +564,7 @@ namespace KnowledgeFramework
                 knowledge = input.directKnowledge + configuredKnowledge * multiplier,
                 evidenceWeight = Math.Max(0f, input.quality * input.novelty * input.sourceReliability / difficulty),
                 expertise = input.directExpertise + configuredExpertise * multiplier,
-                familiarity = input.directFamiliarity + configuredFamiliarity * multiplier
+                familiarity = (schema.familiarityEnabled ? input.directFamiliarity : 0f) + configuredFamiliarity * multiplier
             };
             return true;
         }
@@ -577,6 +586,26 @@ namespace KnowledgeFramework
         {
             if (value.input.skipApplication) return;
             Pawn pawn = colony ? null : value.input.observer;
+            KnowledgeContextKey propagatedContext = KnowledgeV3Runtime.ContextFor(value.input);
+            if (!propagatedContext.IsEmpty)
+            {
+                // Contextual observations belong to V3 context records. Do
+                // not copy them into the legacy V2 facet, subject, or
+                // expertise records where they could advance a global stage.
+                KnowledgeSubjectStateRecord contextualSubject = colony
+                    ? (KnowledgeSubjectStateRecord)component.ColonySubjectV2(value.domainId, value.subjectId, true)
+                    : component.PersonalSubjectV2(value.domainId, value.subjectId, pawn, true);
+                string oldContextualStage = contextualSubject.stageId;
+                KnowledgeV3Runtime.ApplyObservation(component, value, colony);
+                UpdateStage(component, value.schema, value.domainId, value.subjectId, pawn, colony, contextualSubject,
+                    propagatedContext);
+                changes.Add(new KnowledgeChange(value.domainId, value.subjectId, value.facetId, pawn,
+                    colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, 0f, 0f, 0f, 0f,
+                    oldContextualStage, contextualSubject.stageId));
+                dependencies.Add(value.domainId + "\n" + value.subjectId + "\n" + value.facetId + "\n" +
+                    (colony ? "C" : pawn.thingIDNumber.ToString()));
+                return;
+            }
             KnowledgeFacetStateRecord facet = colony
                 ? (KnowledgeFacetStateRecord)component.ColonyFacetV2(value.domainId, value.subjectId, value.facetId, true)
                 : component.PersonalFacetV2(value.domainId, value.subjectId, value.facetId, pawn, true);
@@ -601,16 +630,18 @@ namespace KnowledgeFramework
             IncrementBounded(facet.eventCounts, value.input.reasonId);
             AggregateEvidence(facet, value);
             RetainProvenance(facet, value);
-            subject.familiarity = Math.Min(100000000f, subject.familiarity + value.familiarity);
+            if (value.schema.familiarityEnabled)
+                subject.familiarity = Math.Min(100000000f, subject.familiarity + value.familiarity);
             if (value.input.documented && value.facet.documentable)
             {
                 subject.documented = true;
                 subject.documentationSource = value.input.source;
             }
             if (expertise != null) expertise.amount = Math.Min(100000000f, expertise.amount + value.expertise);
-            UpdateStage(component, value.schema, value.domainId, value.subjectId, pawn, colony, subject, KnowledgeV3Runtime.ContextFor(value.input));
             component.Touch(subject, facet, expertise);
             KnowledgeV3Runtime.ApplyObservation(component, value, colony);
+            UpdateStage(component, value.schema, value.domainId, value.subjectId, pawn, colony, subject,
+                KnowledgeV3Runtime.ContextFor(value.input));
 
             float newConfidence = KnowledgeMath.Confidence(facet.supportingEvidence, facet.contradictoryEvidence, value.schema.uncertaintyEnabled);
             changes.Add(new KnowledgeChange(value.domainId, value.subjectId, value.facetId, pawn,
@@ -624,24 +655,8 @@ namespace KnowledgeFramework
             string subjectId, Pawn pawn, bool colony, KnowledgeSubjectStateRecord subject,
             KnowledgeContextKey context = default(KnowledgeContextKey))
         {
-            if (schema.stages.Count == 0) return;
-            // The persisted V2 subject stage is the global/legacy stage. Contextual
-            // stage views are derived by KnowledgeDiscovery without overwriting this
-            // shared record with whichever context happened to be observed last.
-            KnowledgeStageAggregate aggregate = KnowledgeStageAggregation.ForSubject(component, schema, domainId, subjectId,
-                pawn, colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, KnowledgeContextKey.Empty,
-                KnowledgeContextFallbackMode.ExactOnly);
-            KnowledgeStageSchema current = schema.Stage(subject.stageId);
-            KnowledgeStageSchema stage = schema.stages.LastOrDefault(item =>
-            {
-                bool legacy = aggregate.knowledge >= item.minimumKnowledge && aggregate.confidence >= item.minimumConfidence &&
-                    (!item.documented || subject.documented);
-                bool requirements = item.requirementGroup == null || KnowledgeRequirementService.Evaluate(item.requirementGroup, domainId, subjectId,
-                    pawn, colony ? KnowledgeScope.Colony : KnowledgeScope.Personal, context, out _);
-                return legacy && requirements;
-            });
-            if (current != null && stage != null && !stage.allowRegression && stage.order < current.order) stage = current;
-            subject.stageId = stage?.id;
+            if (schema == null || schema.stages.Count == 0) return;
+            KnowledgeDiscovery.RecordStageProgress(component, schema, domainId, subjectId, pawn, colony, subject, context);
         }
 
         private static void AggregateEvidence(KnowledgeFacetStateRecord facet, ValidatedObservation value)

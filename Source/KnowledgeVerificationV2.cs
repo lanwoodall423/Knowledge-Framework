@@ -89,7 +89,7 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null || pawn == null)
             {
-                failures.Add("active game and pawn required");
+                failures.Add("active game and pawn required (expected=active GameComponent and non-null Pawn actual=missing)");
                 return new KnowledgeVerificationResult(passed, failures);
             }
 
@@ -144,6 +144,8 @@ namespace KnowledgeFramework
                 }),
                 source = "verification"
             };
+            bool previousBioPanelEnabled = KnowledgeFrameworkMod.Settings?.BioPanelEnabled ?? true;
+            bool bioProviderRegistered = false;
             try
             {
                 bool registered = KnowledgeRegistry.RegisterDomain(registration, new KnowledgeRegistrationOptions
@@ -153,6 +155,26 @@ namespace KnowledgeFramework
                     conflict = KnowledgeRegistrationConflict.Replace
                 });
                 Check("dynamic domain registration", registered, ref passed, failures);
+                KnowledgeProviderRegistry.Register("verification.bio", int.MaxValue,
+                    value => new KnowledgeEntry { label = "Verification", summary = value?.LabelShortCap });
+                bioProviderRegistered = true;
+                bool bioSettingsAvailable = KnowledgeFrameworkMod.Settings != null;
+                if (bioSettingsAvailable) KnowledgeFrameworkMod.Settings.BioPanelEnabled = true;
+                bool bioVisibleWhenEnabled = KnowledgeBioPanel.VisibleFor(pawn);
+                bool priorBioPanelEnabled = KnowledgeFrameworkMod.Settings?.BioPanelEnabled ?? true;
+                bool bioHiddenWhenDisabled = false;
+                if (bioSettingsAvailable)
+                {
+                    KnowledgeFrameworkMod.Settings.BioPanelEnabled = false;
+                    bioHiddenWhenDisabled = !KnowledgeBioPanel.VisibleFor(pawn);
+                    KnowledgeFrameworkMod.Settings.BioPanelEnabled = true;
+                }
+                bool bioVisibleAfterRestore = KnowledgeBioPanel.VisibleFor(pawn);
+                Check("Bio-panel setting behavior", bioSettingsAvailable && bioVisibleWhenEnabled &&
+                    bioHiddenWhenDisabled && bioVisibleAfterRestore, ref passed, failures);
+                if (bioSettingsAvailable) KnowledgeFrameworkMod.Settings.BioPanelEnabled = priorBioPanelEnabled;
+                KnowledgeProviderRegistry.Unregister("verification.bio");
+                bioProviderRegistered = false;
                 KnowledgeTransaction batch = new KnowledgeTransaction { source = "verification" }
                     .Add(NewObservation(pawn, "habitat", 20f, true, 5f))
                     .Add(NewObservation(pawn, "habitat", 10f, false, 5f));
@@ -211,10 +233,12 @@ namespace KnowledgeFramework
             }
             catch (Exception exception)
             {
-                failures.Add("game verification exception: " + exception);
+                failures.Add("game verification exception (expected=no exception actual=" + exception + ")");
             }
             finally
             {
+                if (KnowledgeFrameworkMod.Settings != null) KnowledgeFrameworkMod.Settings.BioPanelEnabled = previousBioPanelEnabled;
+                if (bioProviderRegistered) KnowledgeProviderRegistry.Unregister("verification.bio");
                 component.RemoveDomainDataV2(TestDomain);
                 KnowledgeRegistry.UnregisterDomain(TestDomain, "verification");
                 KnowledgeRegistry.ClearDiagnostics(TestDomain);
@@ -225,13 +249,16 @@ namespace KnowledgeFramework
             return new KnowledgeVerificationResult(passed, failures);
         }
 
-        [DebugAction("Knowledge Framework", "Run version 2 verification", actionType = DebugActionType.Action,
+        [DebugAction("Knowledge Framework", "Run complete V2/V3 behavioral verification", actionType = DebugActionType.Action,
             allowedGameStates = AllowedGameStates.PlayingOnMap)]
         private static void RunFromDebugMenu()
         {
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn ?? Find.CurrentMap?.mapPawns.FreeColonists.FirstOrDefault();
             KnowledgeVerificationResult result = RunGameTests(pawn);
-            Log.Message("[Knowledge Framework] Verification: " + result);
+            Log.Message("[Knowledge Framework] Behavioral verification " + (result.Success ? "PASS" : "FAIL") +
+                ": passed=" + result.passed + " failed=" + result.failures.Count);
+            if (!result.Success)
+                Log.Warning("[Knowledge Framework] Behavioral verification failures: " + string.Join("; ", result.failures));
             Messages.Message(result.Success ? "KnowledgeFramework_VerificationPassed".Translate() : "KnowledgeFramework_VerificationFailed".Translate(),
                 result.Success ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
         }
@@ -268,7 +295,7 @@ namespace KnowledgeFramework
         private static void Check(string name, bool condition, ref int passed, List<string> failures)
         {
             if (condition) passed++;
-            else failures.Add(name);
+            else failures.Add(name + " (expected=true, actual=false)");
         }
     }
 }

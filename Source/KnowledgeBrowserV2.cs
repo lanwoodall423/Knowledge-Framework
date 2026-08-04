@@ -93,11 +93,21 @@ namespace KnowledgeFramework
         private string detailDomain;
         private string detailSubject;
         private KnowledgeContextKey detailContext;
+        private int contextOptionsKnowledgeRevision = -1;
+        private int contextOptionsUiRevision = -1;
+        private int contextOptionsPawnId;
+        private KnowledgeScope contextOptionsScope;
+        private string contextOptionsDomain;
+        private string contextOptionsSubject;
+        private List<KnowledgeContextKey> contextOptions = new List<KnowledgeContextKey>();
+        private bool allowExplicitContext;
+        private bool contextOptionsAllowExplicit;
 
         public override Vector2 InitialSize => new Vector2(Mathf.Min(1100f, UI.screenWidth * 0.92f), Mathf.Min(760f, UI.screenHeight * 0.9f));
 
         internal KnowledgeContextKey RequestedContext => context;
         internal KnowledgeScope SelectedScope => scope;
+        internal IReadOnlyList<KnowledgeContextKey> ContextOptionsForVerification(KnowledgeSchema schema) => ContextOptions(schema);
 
         public Window_KnowledgeBrowser(string domainId, Pawn pawn, string subjectId,
             KnowledgeContextKey context = default(KnowledgeContextKey), KnowledgeScope scope = KnowledgeScope.Personal)
@@ -107,6 +117,7 @@ namespace KnowledgeFramework
             this.subjectId = subjectId;
             this.context = context;
             this.scope = scope;
+            allowExplicitContext = !context.IsEmpty && !context.IsPartial;
             doCloseX = true;
             doCloseButton = false;
             absorbInputAroundWindow = false;
@@ -143,6 +154,8 @@ namespace KnowledgeFramework
                 {
                     domainId = item.id;
                     subjectId = null;
+                    context = KnowledgeContextKey.Empty;
+                    allowExplicitContext = false;
                     modelRevision = -1;
                     modelKnowledgeRevision = -1;
                     modelDomain = null;
@@ -152,12 +165,43 @@ namespace KnowledgeFramework
             }
             float scopeX = header.xMax - 230f;
             if (Widgets.ButtonText(new Rect(scopeX, header.y, 108f, 34f), "KnowledgeFramework_Colonist".Translate(), active: scope != KnowledgeScope.Personal))
+            {
                 scope = KnowledgeScope.Personal;
+                allowExplicitContext = false;
+            }
             if (Widgets.ButtonText(new Rect(scopeX + 116f, header.y, 108f, 34f), "KnowledgeFramework_Colony".Translate(), active: scope != KnowledgeScope.Colony))
+            {
                 scope = KnowledgeScope.Colony;
+                allowExplicitContext = false;
+            }
             if (scope == KnowledgeScope.Personal && pawn == null) pawn = Find.Selector?.SingleSelectedThing as Pawn;
 
-            Rect body = new Rect(rect.x, header.yMax + 8f, rect.width, rect.height - header.height - 8f);
+            IReadOnlyList<KnowledgeContextKey> availableContexts = ContextOptions(schema);
+            bool contextualDomain = schema.stages.Any(item => item.contextSensitive) || availableContexts.Count > 1;
+            if (!availableContexts.Contains(context))
+            {
+                context = KnowledgeContextKey.Empty;
+                allowExplicitContext = false;
+            }
+            if (contextualDomain)
+            {
+                Rect contextRect = new Rect(header.x, header.yMax + 4f, header.width, 32f);
+                if (Widgets.ButtonText(contextRect, KnowledgeBrowserLabels.ContextSelection(context, schema.id, subjectId, pawn, scope)))
+                {
+                    List<FloatMenuOption> options = availableContexts.Select(value => new FloatMenuOption(
+                        KnowledgeBrowserLabels.ContextSelection(value, schema.id, subjectId, pawn, scope), () =>
+                        {
+                            context = value;
+                            allowExplicitContext = true;
+                            detailModel = null;
+                            modelRevision = -1;
+                        })).ToList();
+                    Find.WindowStack.Add(new FloatMenu(options));
+                }
+            }
+
+            float bodyTop = contextualDomain ? header.yMax + 44f : header.yMax + 8f;
+            Rect body = new Rect(rect.x, bodyTop, rect.width, Mathf.Max(0f, rect.height - (bodyTop - rect.y)));
             float listWidth = Mathf.Clamp(body.width * 0.38f, 230f, 390f);
             bool stacked = body.width < 560f;
             if (stacked) listWidth = body.width;
@@ -211,7 +255,11 @@ namespace KnowledgeFramework
                     Widgets.Label(new Rect(row.x + 5f, row.y + 21f, row.width - 10f, 17f),
                         KnowledgeBrowserLabels.Stage(schema, presentation.stageId));
                     GUI.color = Color.white;
-                    if (Widgets.ButtonInvisible(row)) subjectId = subject.id;
+                if (Widgets.ButtonInvisible(row))
+                {
+                    if (subjectId != subject.id) allowExplicitContext = false;
+                    subjectId = subject.id;
+                }
                 }
             }
             finally { Widgets.EndScrollView(); }
@@ -220,7 +268,8 @@ namespace KnowledgeFramework
 
         private bool SubjectVisibleInList(KnowledgeSubjectSnapshot subject, string search)
         {
-            if (subject == null || subject.state == KnowledgeSubjectState.Archived || subject.state == KnowledgeSubjectState.Retired ||
+            if (subject == null) return false;
+            if (subject.state == KnowledgeSubjectState.Archived || subject.state == KnowledgeSubjectState.Retired ||
                 subject.state == KnowledgeSubjectState.Hidden || subject.state == KnowledgeSubjectState.MissingContent) return false;
             if (!subjectPresentations.TryGetValue(subject.id, out KnowledgeRevealResult presentation)) return false;
             if (!presentation.identified) return false;
@@ -248,9 +297,11 @@ namespace KnowledgeFramework
             Widgets.Label(new Rect(inner.x, inner.y + 38f, inner.width, 24f), "KnowledgeFramework_StageValue".Translate(
                 KnowledgeBrowserLabels.Stage(schema, browserRow.currentStageId)));
             string contextText = browserRow.usedContextFallback
-                ? "KnowledgeFramework_ContextFallback".Translate(KnowledgeBrowserLabels.Context(browserRow.requestedContext),
-                    KnowledgeBrowserLabels.Context(browserRow.resolvedContext))
-                : "KnowledgeFramework_ContextValue".Translate(KnowledgeBrowserLabels.Context(browserRow.requestedContext));
+                ? "KnowledgeFramework_ContextFallback".Translate(
+                    KnowledgeBrowserLabels.ContextSelection(browserRow.requestedContext, schema.id, subject.id, pawn, scope),
+                    KnowledgeBrowserLabels.ContextSelection(browserRow.resolvedContext, schema.id, subject.id, pawn, scope))
+                : "KnowledgeFramework_ContextValue".Translate(
+                    KnowledgeBrowserLabels.ContextSelection(browserRow.requestedContext, schema.id, subject.id, pawn, scope));
             GUI.color = Color.gray;
             Widgets.Label(new Rect(inner.x, inner.y + 62f, inner.width, 22f), contextText);
             GUI.color = Color.white;
@@ -393,6 +444,33 @@ namespace KnowledgeFramework
                 detailContext = context;
             }
             return detailModel;
+        }
+
+        private IReadOnlyList<KnowledgeContextKey> ContextOptions(KnowledgeSchema schema)
+        {
+            int knowledgeRevision = KnowledgeQuery.Revision;
+            int uiRevision = KnowledgeUiCache.Revision;
+            int pawnId = pawn?.thingIDNumber ?? 0;
+            if (contextOptionsKnowledgeRevision != knowledgeRevision || contextOptionsUiRevision != uiRevision ||
+                contextOptionsPawnId != pawnId || contextOptionsScope != scope || contextOptionsDomain != schema.id ||
+                contextOptionsSubject != subjectId || contextOptionsAllowExplicit != allowExplicitContext)
+            {
+                contextOptions = KnowledgeBrowserModels.ContextOptions(new KnowledgeBrowserFilter
+                {
+                    domainId = schema.id,
+                    pawn = pawn,
+                    scope = scope,
+                    context = context
+                }, subjectId, allowExplicitContext).ToList();
+                contextOptionsKnowledgeRevision = knowledgeRevision;
+                contextOptionsUiRevision = uiRevision;
+                contextOptionsPawnId = pawnId;
+                contextOptionsScope = scope;
+                contextOptionsDomain = schema.id;
+                contextOptionsSubject = subjectId;
+                contextOptionsAllowExplicit = allowExplicitContext;
+            }
+            return contextOptions;
         }
     }
 }

@@ -16,6 +16,8 @@ namespace KnowledgeFramework
         private const int MaximumChainDepth = 64;
         private static readonly Dictionary<string, KnowledgeContextTypeDef> Types = new Dictionary<string, KnowledgeContextTypeDef>(StringComparer.Ordinal);
         private static readonly Dictionary<string, IKnowledgeContextResolver> Resolvers = new Dictionary<string, IKnowledgeContextResolver>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, IKnowledgeContextPresentationProvider> PresentationProviders =
+            new Dictionary<string, IKnowledgeContextPresentationProvider>(StringComparer.Ordinal);
 
         public static bool RegisterType(KnowledgeContextTypeDef definition, bool replace = false)
         {
@@ -30,6 +32,59 @@ namespace KnowledgeFramework
             if (typeId.NullOrEmpty() || resolver == null || Resolvers.ContainsKey(typeId) && !replace) return false;
             Resolvers[typeId] = resolver;
             return true;
+        }
+
+        /// <summary>
+        /// Registers optional, consumer-owned context values and labels without
+        /// changing the existing parent-resolver API. Providers must return only
+        /// values already known to the player; stable IDs are never displayed by
+        /// the framework as a fallback.
+        /// </summary>
+        public static bool RegisterPresentationProvider(string typeId, IKnowledgeContextPresentationProvider provider, bool replace = false)
+        {
+            if (typeId.NullOrEmpty() || provider == null || PresentationProviders.ContainsKey(typeId) && !replace) return false;
+            PresentationProviders[typeId] = provider;
+            KnowledgeUiCache.Invalidate(Array.Empty<KnowledgeChange>());
+            return true;
+        }
+
+        public static IKnowledgeContextPresentationProvider PresentationProvider(string typeId) =>
+            !typeId.NullOrEmpty() && PresentationProviders.TryGetValue(typeId, out IKnowledgeContextPresentationProvider provider)
+                ? provider : null;
+
+        public static IReadOnlyList<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn,
+            KnowledgeScope scope, IEnumerable<KnowledgeContextKey> persisted = null)
+        {
+            HashSet<KnowledgeContextKey> result = new HashSet<KnowledgeContextKey>();
+            foreach (KnowledgeContextKey value in persisted ?? Enumerable.Empty<KnowledgeContextKey>())
+                if (!value.IsEmpty && !value.IsPartial && Type(value.typeId) != null) result.Add(value);
+            foreach (KeyValuePair<string, IKnowledgeContextPresentationProvider> pair in PresentationProviders)
+            {
+                IEnumerable<KnowledgeContextKey> values;
+                try { values = pair.Value.KnownContexts(domainId, subjectId, pawn, scope); }
+                catch (Exception exception)
+                {
+                    KnowledgeLog.ErrorOnce("context-options:" + pair.Key, "A context presentation provider failed.", exception);
+                    continue;
+                }
+                foreach (KnowledgeContextKey value in values ?? Enumerable.Empty<KnowledgeContextKey>())
+                    if (!value.IsEmpty && !value.IsPartial && value.typeId == pair.Key && Type(value.typeId) != null) result.Add(value);
+            }
+            return result.OrderBy(value => Type(value.typeId)?.label ?? string.Empty, StringComparer.Ordinal)
+                .ThenBy(value => value.typeId, StringComparer.Ordinal).ThenBy(value => value.stableId, StringComparer.Ordinal).ToList();
+        }
+
+        public static string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+        {
+            if (context.IsEmpty || context.IsPartial) return null;
+            IKnowledgeContextPresentationProvider provider = PresentationProvider(context.typeId);
+            if (provider == null) return null;
+            try { return provider.ValueLabel(context, domainId, subjectId, pawn, scope); }
+            catch (Exception exception)
+            {
+                KnowledgeLog.ErrorOnce("context-label:" + context.typeId, "A context value label provider failed.", exception);
+                return null;
+            }
         }
 
         public static KnowledgeContextTypeDef Type(string typeId)
@@ -130,6 +185,8 @@ namespace KnowledgeFramework
             CustomAggregators[id] = aggregator;
             return true;
         }
+
+        internal static bool HasAggregator(string id) => !id.NullOrEmpty() && CustomAggregators.ContainsKey(id);
 
         public static KnowledgeClaimSnapshot Snapshot(string domainId, string subjectId, string facetId, string claimId, Pawn pawn = null,
             KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
@@ -238,16 +295,17 @@ namespace KnowledgeFramework
             string claimId, Pawn pawn, KnowledgeScope scope, KnowledgeContextKey context, KnowledgeClaimStateRecord record)
         {
             List<KnowledgeMeasurementRecord> measurements = (record?.measurements ?? new List<KnowledgeMeasurementRecord>()).Where(item => item != null).ToList();
-            float support = measurements.Where(item => item.disposition != (int)KnowledgeEvidenceDisposition.Contradictory)
+            float support = measurements.Where(item => item.disposition == (int)KnowledgeEvidenceDisposition.Supporting)
                 .Sum(Weight);
             float contradiction = measurements.Where(item => item.disposition == (int)KnowledgeEvidenceDisposition.Contradictory).Sum(Weight);
             float stored = KnowledgeMath.Clamp01Finite(support / (support + contradiction + 1f));
             int now = Find.TickManager?.TicksGame ?? measurements.Select(item => item.tick).DefaultIfEmpty(0).Max();
-            int lastConfirmed = measurements.Where(item => item.disposition != (int)KnowledgeEvidenceDisposition.Contradictory)
+            int lastConfirmed = measurements.Where(item => item.disposition == (int)KnowledgeEvidenceDisposition.Supporting)
                 .Select(item => item.tick).DefaultIfEmpty(0).Max();
             float staleness = Staleness(claim, lastConfirmed, now);
             float effective = KnowledgeMath.Clamp01Finite(stored * (1f - staleness));
-            KnowledgeMeasurementRecord best = measurements.OrderByDescending(Weight).ThenByDescending(item => item.tick).FirstOrDefault();
+            KnowledgeMeasurementRecord best = measurements.Where(item => item.disposition != (int)KnowledgeEvidenceDisposition.Neutral)
+                .OrderByDescending(Weight).ThenByDescending(item => item.tick).FirstOrDefault();
             KnowledgeClaimValue value = AggregateValue(claim, measurements);
             bool documented = measurements.Any(item => item.documented);
             bool revealed = claim.revealedByDefault || measurements.Any(item => item.revealed);
@@ -276,8 +334,8 @@ namespace KnowledgeFramework
 
         private static KnowledgeClaimValue AggregateValue(KnowledgeClaimDef claim, List<KnowledgeMeasurementRecord> records)
         {
-            List<KnowledgeMeasurementRecord> values = records.Where(item => item.disposition != (int)KnowledgeEvidenceDisposition.Contradictory).ToList();
-            if (values.Count == 0) values = records;
+            List<KnowledgeMeasurementRecord> values = records.Where(item => item.disposition == (int)KnowledgeEvidenceDisposition.Supporting).ToList();
+            if (values.Count == 0) values = records.Where(item => item.disposition == (int)KnowledgeEvidenceDisposition.Contradictory).ToList();
             if (values.Count == 0) return null;
             if (claim.aggregation == KnowledgeClaimAggregation.ConsumerDefined && !claim.consumerAggregationId.NullOrEmpty() &&
                 CustomAggregators.TryGetValue(claim.consumerAggregationId, out KnowledgeClaimAggregator custom))
@@ -285,6 +343,7 @@ namespace KnowledgeFramework
                 try { return custom(values.Select(item => new KnowledgeClaimMeasurementSnapshot(item)).ToList())?.Clone(); }
                 catch (Exception exception) { KnowledgeLog.ErrorOnce("claim-aggregate:" + claim.consumerAggregationId, "A claim aggregator failed.", exception); }
             }
+            if (claim.aggregation == KnowledgeClaimAggregation.ConsumerDefined) return null;
             KnowledgeMeasurementRecord latest = values.OrderByDescending(item => item.tick).ThenByDescending(Weight).First();
             KnowledgeMeasurementRecord latestOverall = records.OrderByDescending(item => item.tick).ThenByDescending(Weight).First();
             bool numeric = claim.valueType == KnowledgeClaimValueType.Integer || claim.valueType == KnowledgeClaimValueType.Float ||
@@ -509,26 +568,52 @@ namespace KnowledgeFramework
             HashSet<string> plannedContexts = new HashSet<string>(StringComparer.Ordinal);
             Dictionary<string, string> plannedSpecimens = new Dictionary<string, string>(StringComparer.Ordinal);
             Dictionary<string, string> plannedLastContexts = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, float> logicalFactors = new Dictionary<string, float>(StringComparer.Ordinal);
+            Dictionary<string, float> logicalReliabilityRatios = new Dictionary<string, float>(StringComparer.Ordinal);
             for (int i = 0; i < input.Observations.Count; i++)
             {
                 KnowledgeObservation observation = input.Observations[i];
                 KnowledgeSchema schema = KnowledgeRegistry.Schema(observation?.domainId);
                 if (observation == null) { error = "Observation " + i + " is null."; return false; }
+                if (observation.logicalEventId.NullOrEmpty()) observation.logicalEventId = "logical-" + Guid.NewGuid().ToString("N");
+                observation.logicalEventGroupId = observation.logicalEventId + "\nroot\n" + i;
                 List<KnowledgeObservation> recipe = ExpandRecipe(observation, schema);
                 foreach (KnowledgeObservation candidate in recipe)
                 {
+                    if (candidate.logicalEventId.NullOrEmpty()) candidate.logicalEventId = observation.logicalEventId;
+                    candidate.logicalEventGroupId = observation.logicalEventGroupId;
                     if (candidate.witnessDistribution == null) candidate.witnessDistribution = schema?.Observation(candidate.observationId)?.witnessDistribution;
                     if (!PrepareMeasurements(candidate, out error)) return false;
-                    if (!ApplyNoveltyPreview(candidate, schema, plannedAccrual, plannedSuccesses, plannedFailures, plannedSources,
-                        plannedContexts, plannedSpecimens, plannedLastContexts, out error)) return false;
+                    candidate.accrualOwner = !logicalFactors.ContainsKey(candidate.logicalEventGroupId);
+                    if (candidate.accrualOwner)
+                    {
+                        float beforeReliability = candidate.sourceReliability;
+                        if (!ApplyNoveltyPreview(candidate, schema, plannedAccrual, plannedSuccesses, plannedFailures, plannedSources,
+                            plannedContexts, plannedSpecimens, plannedLastContexts, out float factor, out error)) return false;
+                        logicalFactors[candidate.logicalEventGroupId] = factor;
+                        logicalReliabilityRatios[candidate.logicalEventGroupId] = beforeReliability > 0f
+                            ? candidate.sourceReliability / beforeReliability : 1f;
+                    }
+                    else
+                    {
+                        float factor = logicalFactors[candidate.logicalEventGroupId];
+                        candidate.novelty *= factor;
+                        candidate.sourceReliability = Math.Min(10f, candidate.sourceReliability * logicalReliabilityRatios[candidate.logicalEventGroupId]);
+                        candidate.skipApplication = factor <= 0f;
+                    }
                     expanded.Add(candidate);
                     if (expanded.Count > ExpandedTransactionLimit) { error = "Expanded observation recipe exceeds the safe transaction limit of " + ExpandedTransactionLimit + "."; return false; }
                     if (candidate.skipApplication) continue;
                     foreach (KnowledgeObservation witness in ExpandWitnesses(candidate, schema))
                     {
+                        witness.logicalEventId = candidate.logicalEventId;
+                        witness.logicalEventGroupId = candidate.logicalEventGroupId;
+                        witness.accrualOwner = false;
                         if (!PrepareMeasurements(witness, out error)) return false;
-                        if (!ApplyNoveltyPreview(witness, schema, plannedAccrual, plannedSuccesses, plannedFailures, plannedSources,
-                            plannedContexts, plannedSpecimens, plannedLastContexts, out error)) return false;
+                        float factor = logicalFactors[candidate.logicalEventGroupId];
+                        witness.novelty *= factor;
+                        witness.sourceReliability = Math.Min(10f, witness.sourceReliability * logicalReliabilityRatios[candidate.logicalEventGroupId]);
+                        witness.skipApplication = factor <= 0f;
                         expanded.Add(witness);
                         if (expanded.Count > ExpandedTransactionLimit) { error = "Witness distribution exceeds the safe transaction limit of " + ExpandedTransactionLimit + "."; return false; }
                     }
@@ -572,7 +657,7 @@ namespace KnowledgeFramework
                 if (valueToApply.scope == KnowledgeScope.Personal && colony) valueToApply.scope = KnowledgeScope.Colony;
                 KnowledgeClaimService.Apply(component, valueToApply, input);
             }
-            KnowledgeAccrualService.Commit(component, input, value.schema);
+            if (input.accrualOwner) KnowledgeAccrualService.Commit(component, input, value.schema);
             if (!input.sharedExpertiseNamespaceId.NullOrEmpty() && value.expertise > 0f && colony == input.targetColony)
                 KnowledgeSharedExpertiseService.Apply(input.sharedExpertiseNamespaceId, value.domainId, value.trackId, input.observer,
                     value.expertise, input.sharedExpertiseWeight);
@@ -708,6 +793,7 @@ namespace KnowledgeFramework
                 subjectId = input.subjectId,
                 facetId = input.facetId,
                 observationId = input.observationId,
+                logicalEventId = input.logicalEventId,
                 methodId = input.methodId,
                 quality = input.quality,
                 novelty = input.novelty,
@@ -738,7 +824,8 @@ namespace KnowledgeFramework
                 notify = input.notify,
                 witnessDistribution = input.witnessDistribution,
                 sharedExpertiseNamespaceId = input.sharedExpertiseNamespaceId,
-                sharedExpertiseWeight = input.sharedExpertiseWeight
+                sharedExpertiseWeight = input.sharedExpertiseWeight,
+                logicalEventGroupId = input.logicalEventGroupId
             };
         }
 
@@ -776,14 +863,15 @@ namespace KnowledgeFramework
         private static bool ApplyNoveltyPreview(KnowledgeObservation input, KnowledgeSchema schema, Dictionary<string, int> planned,
             Dictionary<string, int> plannedSuccesses, Dictionary<string, int> plannedFailures, HashSet<string> plannedSources,
             HashSet<string> plannedContexts, Dictionary<string, string> plannedSpecimens, Dictionary<string, string> plannedLastContexts,
-            out string error)
+            out float factor, out string error)
         {
+            factor = 1f;
             error = null;
             KnowledgeObservationDef definition = schema?.Observation(input.observationId);
             KnowledgeAccrualPolicy policy = definition?.accrualPolicy;
             if (policy == null) return true;
             if (!KnowledgeAccrualService.Preview(input, policy, definition.StableId, planned, plannedSuccesses, plannedFailures,
-                plannedSources, plannedContexts, plannedSpecimens, plannedLastContexts, out float factor, out error)) return false;
+                plannedSources, plannedContexts, plannedSpecimens, plannedLastContexts, out factor, out error)) return false;
             input.novelty *= factor;
             input.skipApplication = factor <= 0f;
             return KnowledgeMath.IsFinite(input.novelty);
@@ -831,6 +919,21 @@ namespace KnowledgeFramework
             string key = Key(input, policy, policyNamespace);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             KnowledgeAccrualStateRecord record = component?.AccrualV3(key, false);
+            if (record == null)
+            {
+                string legacyKey = LegacyKey(input, policy);
+                record = component?.AccrualLegacyV3(legacyKey);
+            }
+            else
+            {
+                // A pre-V4 record can also remain beside a newly written
+                // scoped record. Prefer the shared legacy state so an upgrade
+                // cannot grant a second capped or unique event in another
+                // scope while the old ownership is still ambiguous.
+                KnowledgeAccrualStateRecord legacy = component?.AccrualLegacyV3(LegacyKey(input, policy));
+                if (legacy != null && legacy != record) record = legacy;
+            }
+            PrepareLegacyState(record, input, policy, policyNamespace);
             int existing = record?.count ?? 0;
             int pending = planned.TryGetValue(key, out int plannedCount) ? plannedCount : 0;
             int projectedBefore = existing + pending;
@@ -861,9 +964,9 @@ namespace KnowledgeFramework
             if (projectedBefore == 0) factor *= Math.Max(0f, policy.firstObservationBonus);
             int pendingSuccesses = plannedSuccesses.TryGetValue(key, out int plannedSuccessCount) ? plannedSuccessCount : 0;
             int pendingFailures = plannedFailures.TryGetValue(key, out int plannedFailureCount) ? plannedFailureCount : 0;
-            if (input.success && (record?.successCount ?? 0) + pendingSuccesses == 0)
+            if ((record == null || record.outcomeHistoryComplete) && input.success && (record?.successCount ?? 0) + pendingSuccesses == 0)
                 factor *= Math.Max(0f, policy.firstSuccessBonus);
-            if (!input.success && (record?.failureCount ?? 0) + pendingFailures == 0)
+            if ((record == null || record.outcomeHistoryComplete) && !input.success && (record?.failureCount ?? 0) + pendingFailures == 0)
                 factor *= Math.Max(0f, policy.firstFailureBonus);
             if (projectedBefore > 0 && policy.diminishingReturns > 0f)
                 factor *= (float)Math.Pow(1f - policy.diminishingReturns, projectedBefore);
@@ -904,7 +1007,22 @@ namespace KnowledgeFramework
             if (policy == null) return;
             input.accrualCommitted = true;
             string key = Key(input, policy, definition.StableId);
-            KnowledgeAccrualStateRecord record = component.AccrualV3(key, true);
+            KnowledgeAccrualStateRecord record = component.AccrualV3(key, false);
+            bool compatibilityState = record != null && !record.outcomeHistoryComplete;
+            KnowledgeAccrualStateRecord legacy = component.AccrualLegacyV3(LegacyKey(input, policy));
+            if (legacy != null && legacy != record)
+            {
+                record = legacy;
+                compatibilityState = true;
+            }
+            if (record == null) record = component.AccrualV3(key, true);
+            PrepareLegacyState(record, input, policy, definition.StableId);
+            if (!compatibilityState)
+            {
+                record.keyFormatVersion = 2;
+                record.outcomeHistoryComplete = true;
+                record.ownershipMetadataComplete = true;
+            }
             int tick = Find.TickManager?.TicksGame ?? 0;
             int day = tick / 60000;
             if (record.day != day) record.dailyCount = 0;
@@ -913,8 +1031,11 @@ namespace KnowledgeFramework
             record.observationId = definition.StableId;
             record.policyNamespace = definition.StableId;
             record.facetId = input.facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : input.facetId;
-            record.colony = input.targetColony;
-            record.pawnId = IncludesPawn(input, policy) ? input.observer?.thingIDNumber ?? 0 : 0;
+            if (!compatibilityState)
+            {
+                record.colony = input.targetColony;
+                record.pawnId = IncludesPawn(input, policy) ? input.observer?.thingIDNumber ?? 0 : 0;
+            }
             record.day = day;
             record.count = Math.Min(100000000, record.count + 1);
             record.dailyCount = Math.Min(100000000, record.dailyCount + 1);
@@ -979,6 +1100,40 @@ namespace KnowledgeFramework
 
         private static int CurrentTick() => Find.TickManager?.TicksGame ?? 0;
 
+        private static void PrepareLegacyState(KnowledgeAccrualStateRecord record, KnowledgeObservation input,
+            KnowledgeAccrualPolicy policy, string policyNamespace)
+        {
+            if (record == null || input == null || policy == null) return;
+            bool compatibility = !record.ownershipMetadataComplete;
+            record.domainId = record.domainId.NullOrEmpty() ? KnowledgeRegistry.ResolveDomainId(input.domainId) : record.domainId;
+            record.subjectId = record.subjectId.NullOrEmpty() ? KnowledgeRegistry.ResolveSubjectId(record.domainId, input.subjectId) : record.subjectId;
+            record.observationId = record.observationId.NullOrEmpty() ? policyNamespace : record.observationId;
+            record.policyNamespace = record.policyNamespace.NullOrEmpty() || record.policyNamespace == "legacy"
+                ? policyNamespace : record.policyNamespace;
+            record.facetId = record.facetId.NullOrEmpty() || record.facetId == "legacy"
+                ? (input.facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : input.facetId) : record.facetId;
+            if (compatibility)
+            {
+                if (IncludesPawn(input, policy)) record.pawnId = input.observer?.thingIDNumber ?? record.pawnId;
+                if (!input.sourceInstanceId.NullOrEmpty() &&
+                    (policy.uniquePerSourceInstance || policy.uniquePerPawnAndSourceInstance))
+                {
+                    record.sourceInstanceId = record.sourceInstanceId.NullOrEmpty() ? input.sourceInstanceId : record.sourceInstanceId;
+                    if (record.sourceInstanceIds == null) record.sourceInstanceIds = new List<string>();
+                    if (!record.sourceInstanceIds.Contains(input.sourceInstanceId)) record.sourceInstanceIds.Add(input.sourceInstanceId);
+                }
+                if (policy.uniquePerSubjectAndContext)
+                {
+                    string context = KnowledgeContextForState(input);
+                    record.contextKey = context;
+                    if (record.contextKeys == null) record.contextKeys = new List<string>();
+                    if (!record.contextKeys.Contains(context)) record.contextKeys.Add(context);
+                }
+            }
+            record.sourceInstanceIds = (record.sourceInstanceIds ?? new List<string>()).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+            record.contextKeys = (record.contextKeys ?? new List<string>()).Where(value => !value.NullOrEmpty()).Distinct().Take(4096).ToList();
+        }
+
         private static string KnowledgeContextForState(KnowledgeObservation input)
         {
             string value = KnowledgeV3Runtime.ContextFor(input).ToString();
@@ -1015,6 +1170,22 @@ namespace KnowledgeFramework
             // Subject/context uniqueness owns one state per exact context. Empty
             // context is represented by the stable global marker.
             if (policy.uniquePerSubjectAndContext) parts.Add(contextKey.NullOrEmpty() ? "<global>" : contextKey);
+            return string.Join("\n", parts.ToArray());
+        }
+
+        // This reproduces the pre-namespaced key layout used by saves before
+        // V4. It is only a lookup bridge; newly written state always uses
+        // BuildKey and retains the old key on the migrated record.
+        private static string LegacyKey(KnowledgeObservation input, KnowledgeAccrualPolicy policy)
+        {
+            if (input == null || policy == null) return null;
+            if ((policy.uniquePerSourceInstance || policy.uniquePerPawnAndSourceInstance) && input.sourceInstanceId.NullOrEmpty()) return null;
+            if (!policy.uniquePerSourceInstance && !policy.uniquePerPawnAndSourceInstance && !policy.uniquePerSubjectAndContext) return null;
+            List<string> parts = new List<string> { input.domainId, input.subjectId };
+            if (!input.facetId.NullOrEmpty()) parts.Add(input.facetId);
+            if (policy.uniquePerPawnAndSourceInstance) parts.Add((input.observer?.thingIDNumber ?? 0).ToString());
+            if (policy.uniquePerSourceInstance) parts.Add(input.sourceInstanceId ?? string.Empty);
+            if (policy.uniquePerSubjectAndContext) parts.Add(KnowledgeV3Runtime.ContextFor(input).ToString());
             return string.Join("\n", parts.ToArray());
         }
 
