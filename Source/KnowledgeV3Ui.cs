@@ -44,6 +44,7 @@ namespace KnowledgeFramework
         public readonly int evidenceCount;
         public readonly int recencyTick;
         public readonly bool usedContextFallback;
+        public readonly KnowledgeStageProvenance stageProvenance;
         public readonly KnowledgeContextKey requestedContext;
         public readonly KnowledgeContextKey resolvedContext;
         public readonly string lastStage;
@@ -66,8 +67,8 @@ namespace KnowledgeFramework
              IEnumerable<KnowledgeSubjectRelation> relations, IEnumerable<string> badges,
              KnowledgeContextKey requestedContext, KnowledgeContextKey resolvedContext, string displayLabel,
              string displayDescription, bool identified, string currentStageId, IDictionary<string, KnowledgeFacetSnapshotV2> facetValues,
-            IEnumerable<KnowledgeClaimSnapshot> claims, IEnumerable<KnowledgeInsightProgress> insights,
-            IEnumerable<string> unmetRequirements)
+             IEnumerable<KnowledgeClaimSnapshot> claims, IEnumerable<KnowledgeInsightProgress> insights,
+             IEnumerable<string> unmetRequirements, KnowledgeStageProvenance stageProvenance = KnowledgeStageProvenance.None)
         {
             this.subject = subject;
             this.state = state;
@@ -77,6 +78,7 @@ namespace KnowledgeFramework
             this.evidenceCount = evidenceCount;
             this.recencyTick = recencyTick;
             this.usedContextFallback = usedContextFallback;
+            this.stageProvenance = stageProvenance;
             this.requestedContext = requestedContext;
             this.resolvedContext = resolvedContext;
             this.currentStageId = currentStageId.NullOrEmpty() ? state.stageId : currentStageId;
@@ -142,6 +144,18 @@ namespace KnowledgeFramework
             KnowledgeStageSchema stage = schema?.Stage(stageId);
             return stage == null || stage.label == stage.id ? "KnowledgeFramework_Unknown".Translate() :
                 Label(stage.label, "KnowledgeFramework_Unknown");
+        }
+
+        public static string StageProvenance(KnowledgeStageProvenance provenance)
+        {
+            switch (provenance)
+            {
+                case KnowledgeStageProvenance.CalculatedExact: return "KnowledgeFramework_StageSourceCalculatedExact".Translate();
+                case KnowledgeStageProvenance.PersistedExact: return "KnowledgeFramework_StageSourcePersistedExact".Translate();
+                case KnowledgeStageProvenance.InheritedParent: return "KnowledgeFramework_StageSourceInheritedParent".Translate();
+                case KnowledgeStageProvenance.InheritedGlobal: return "KnowledgeFramework_StageSourceInheritedGlobal".Translate();
+                default: return null;
+            }
         }
 
         public static string Claim(KnowledgeSchema schema, string claimId)
@@ -225,10 +239,46 @@ namespace KnowledgeFramework
             if (component != null && !subjectId.NullOrEmpty())
                 persisted.AddRange(component.ContextKeysV3(schema.id, subjectId, pawn, filter.scope == KnowledgeScope.Colony));
             List<KnowledgeContextKey> result = new List<KnowledgeContextKey> { KnowledgeContextKey.Empty };
-            result.AddRange(KnowledgeContextRegistry.KnownContexts(schema.id, subjectId, pawn, filter.scope, persisted));
-            if (includeRequestedContext && !filter.context.IsEmpty && !filter.context.IsPartial && KnowledgeContextRegistry.Type(filter.context.typeId) != null &&
-                !result.Contains(filter.context)) result.Add(filter.context);
+            foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.KnownContexts(schema.id, subjectId, pawn, filter.scope))
+                if (filter.developerMode || ContextAuthorized(filter, subjectId, candidate)) result.Add(candidate);
+            foreach (KnowledgeContextKey candidate in persisted)
+                if (filter.developerMode || ContextAuthorized(filter, subjectId, candidate)) result.Add(candidate);
+            if (includeRequestedContext && !filter.context.IsEmpty && !filter.context.IsPartial &&
+                KnowledgeContextRegistry.Type(filter.context.typeId) != null &&
+                (filter.developerMode || ContextAuthorized(filter, subjectId, filter.context))) result.Add(filter.context);
             return result.Distinct().ToList();
+        }
+
+        internal static bool ContextAuthorized(KnowledgeBrowserFilter filter, string subjectId, KnowledgeContextKey context)
+        {
+            if (filter == null || context.IsEmpty || context.IsPartial) return context.IsEmpty;
+            Pawn pawn = filter.scope == KnowledgeScope.Colony ? null : filter.pawn;
+            if (KnowledgeContextRegistry.IsProviderKnownContext(context, filter.domainId, subjectId, pawn, filter.scope)) return true;
+            KnowledgeSchema schema = KnowledgeRegistry.Schema(filter.domainId);
+            if (schema == null) return false;
+
+            foreach (KnowledgeFacetSchema facet in KnowledgeRegistry.ApplicableFacets(schema.id, subjectId))
+            {
+                if (facet.hiddenUntilRevealed && !KnowledgeDiscovery.Present(schema.id, subjectId, facet.id, pawn,
+                    filter.scope, context, KnowledgeContextFallbackMode.ExactOnly).revealed) continue;
+                KnowledgeFacetSnapshotV2 snapshot = KnowledgeQuery.Facet(schema.id, subjectId, facet.id, pawn, filter.scope,
+                    true, true, context, KnowledgeContextFallbackMode.ExactOnly);
+                if (snapshot == null || !snapshot.context.Equals(context)) continue;
+                if (snapshot.amount > 0f || snapshot.evidenceCount > 0 || snapshot.successCount > 0 ||
+                    snapshot.failureCount > 0 || snapshot.lastTick > 0 || snapshot.EventCounts.Count > 0) return true;
+            }
+
+            foreach (KnowledgeFacetSchema facet in KnowledgeRegistry.ApplicableFacets(schema.id, subjectId))
+                foreach (KnowledgeClaimDef claim in KnowledgeRegistry.ApplicableClaims(schema.id, subjectId, facet.id))
+                {
+                    if (facet.hiddenUntilRevealed && !KnowledgeDiscovery.Present(schema.id, subjectId, facet.id, pawn,
+                        filter.scope, context, KnowledgeContextFallbackMode.ExactOnly).revealed) continue;
+                    KnowledgeClaimSnapshot snapshot = KnowledgeClaimService.Snapshot(schema.id, subjectId, facet.id,
+                        claim.StableId, pawn, filter.scope, context, KnowledgeContextFallbackMode.ExactOnly);
+                    if (snapshot == null || snapshot.observationCount <= 0 || !snapshot.context.Equals(context)) continue;
+                    if (claim.revealedByDefault || snapshot.revealed) return true;
+                }
+            return false;
         }
 
         public static bool HasContextualKnowledge(KnowledgeBrowserFilter filter, string subjectId = null)
@@ -276,18 +326,23 @@ namespace KnowledgeFramework
             if (!LifecycleVisible(subject, filter)) return null;
             if (!filter.categoryId.NullOrEmpty() && !(subject.categoryIds ?? Array.Empty<string>()).Contains(filter.categoryId)) return null;
 
+            KnowledgeContextKey requestedContext = filter.context;
+            KnowledgeContextKey visibleContext = filter.developerMode || ContextAuthorized(filter, subjectId, requestedContext)
+                ? requestedContext : KnowledgeContextKey.Empty;
+            KnowledgeBrowserFilter queryFilter = WithContext(filter, visibleContext);
+
             KnowledgeRevealResult presentation = KnowledgeDiscovery.Present(schema.id, subjectId, null, filter.pawn, filter.scope,
-                filter.context, filter.fallback);
+                queryFilter.context, queryFilter.fallback);
             KnowledgeStageSnapshot stage = KnowledgeDiscovery.StageSnapshot(schema.id, subjectId, filter.pawn, filter.scope,
-                filter.context, filter.fallback);
+                queryFilter.context, queryFilter.fallback);
             if (!filter.developerMode && !filter.includeUnknown && !presentation.identified) return null;
 
             IReadOnlyList<KnowledgeFacetSchema> allFacets = KnowledgeRegistry.ApplicableFacets(schema.id, subjectId);
-            List<KnowledgeFacetSchema> facets = allFacets.Where(facet => FacetVisible(schema.id, subjectId, facet, filter)).ToList();
+            List<KnowledgeFacetSchema> facets = allFacets.Where(facet => FacetVisible(schema.id, subjectId, facet, queryFilter)).ToList();
             if (!filter.facetId.NullOrEmpty() && !facets.Any(item => item.id == filter.facetId)) return null;
             KnowledgeSubjectSnapshotV2 state = KnowledgeQuery.Subject(schema.id, subjectId, filter.pawn, filter.scope);
             Dictionary<string, KnowledgeFacetSnapshotV2> values = facets.ToDictionary(item => item.id, item => KnowledgeQuery.Facet(
-                schema.id, subjectId, item.id, filter.pawn, filter.scope, true, true, filter.context, filter.fallback), StringComparer.Ordinal);
+                schema.id, subjectId, item.id, filter.pawn, filter.scope, true, true, queryFilter.context, queryFilter.fallback), StringComparer.Ordinal);
             float[] weights = facets.Select(item => Math.Max(1f, item.completenessAmount)).ToArray();
             KnowledgeFacetSnapshotV2[] snapshots = facets.Select(item => values[item.id]).ToArray();
             float totalWeight = weights.Sum();
@@ -302,30 +357,30 @@ namespace KnowledgeFramework
                 item.provenance ?? Array.Empty<KnowledgeProvenanceSnapshot>()).Select(item => item.tick)).DefaultIfEmpty(0).Max();
             int evidenceCount = snapshots.Sum(item => item.evidenceCount);
             List<KnowledgeClaimSnapshot> claims = facets.SelectMany(facet => KnowledgeClaimService.ForSubject(schema.id, subjectId, facet.id,
-                    filter.pawn, filter.scope, filter.context, filter.fallback)).Where(claim =>
+                    filter.pawn, filter.scope, queryFilter.context, queryFilter.fallback)).Where(claim =>
                 filter.developerMode || schema.Claim(claim.claimId)?.revealedByDefault == true || claim.revealed).ToList();
-            List<KnowledgeMilestoneState> milestones = Milestones(schema, subjectId, filter);
-            List<KnowledgeSubjectRelation> relations = Relations(schema, subjectId, filter);
+            List<KnowledgeMilestoneState> milestones = Milestones(schema, subjectId, queryFilter);
+            List<KnowledgeSubjectRelation> relations = Relations(schema, subjectId, queryFilter);
             List<KnowledgeInsightProgress> insights = schema.insights.Select(insight => KnowledgeInsightService.Progress(
-                insight.defName, schema.id, subjectId, filter.pawn, filter.scope, filter.context)).ToList();
+                insight.defName, schema.id, subjectId, filter.pawn, filter.scope, queryFilter.context)).ToList();
             KnowledgeStageSchema nextStage = NextStage(schema, stage?.stageId);
             IReadOnlyList<string> unmet = nextStage == null ? Array.Empty<string>() : KnowledgeDiscovery.UnmetStageRequirements(
-                schema.id, subjectId, nextStage.id, filter.pawn, filter.scope, filter.context, filter.fallback);
+                schema.id, subjectId, nextStage.id, filter.pawn, filter.scope, queryFilter.context, filter.fallback);
             bool usedFallback = stage?.usedContextFallback == true || snapshots.Any(item => item.usedContextFallback) || claims.Any(item =>
-                !filter.context.IsEmpty && !item.context.Equals(filter.context)) || milestones.Any(item =>
-                    !filter.context.IsEmpty && !item.context.Equals(filter.context)) || relations.Any(item =>
-                    !filter.context.IsEmpty && !item.context.Equals(filter.context));
-            KnowledgeContextKey resolvedContext = filter.context;
+                !queryFilter.context.IsEmpty && !item.context.Equals(queryFilter.context)) || milestones.Any(item =>
+                !queryFilter.context.IsEmpty && !item.context.Equals(queryFilter.context)) || relations.Any(item =>
+                !queryFilter.context.IsEmpty && !item.context.Equals(queryFilter.context));
+            KnowledgeContextKey resolvedContext = queryFilter.context;
             bool hasResolvedContext = false;
             foreach (KnowledgeContextKey candidate in snapshots.Select(item => item.context).Concat(claims.Select(item => item.context))
                 .Concat(milestones.Select(item => item.context)).Concat(relations.Select(item => item.context)))
             {
-                if (candidate.Equals(filter.context)) continue;
+                if (candidate.Equals(queryFilter.context)) continue;
                 resolvedContext = candidate;
                 hasResolvedContext = true;
                 break;
             }
-            if (!hasResolvedContext) resolvedContext = filter.context;
+            if (!hasResolvedContext) resolvedContext = queryFilter.context;
             if (stage != null && stage.usedContextFallback)
             {
                 resolvedContext = stage.resolvedContext;
@@ -339,8 +394,30 @@ namespace KnowledgeFramework
                     ? "KnowledgeFramework_MissingContent".Translate() : subject.state == KnowledgeSubjectState.Hidden
                         ? "KnowledgeFramework_Hidden".Translate() : null;
             return new KnowledgeBrowserRow(subject, state, facets, completeness, confidence, evidenceCount, recency, usedFallback, milestones,
-                relations, badge.NullOrEmpty() ? null : new[] { badge }, filter.context, resolvedContext, displayLabel, displayDescription,
-                presentation.identified, stage?.stageId ?? presentation.stageId, values, claims, insights, unmet);
+                relations, badge.NullOrEmpty() ? null : new[] { badge }, queryFilter.context, resolvedContext, displayLabel, displayDescription,
+                presentation.identified, stage?.stageId ?? presentation.stageId, values, claims, insights, unmet,
+                stage?.provenance ?? KnowledgeStageProvenance.None);
+        }
+
+        private static KnowledgeBrowserFilter WithContext(KnowledgeBrowserFilter source, KnowledgeContextKey context)
+        {
+            return new KnowledgeBrowserFilter
+            {
+                domainId = source.domainId,
+                pawn = source.pawn,
+                scope = source.scope,
+                search = source.search,
+                categoryId = source.categoryId,
+                facetId = source.facetId,
+                context = context,
+                includeUnknown = source.includeUnknown,
+                includeArchived = source.includeArchived,
+                includeHidden = source.includeHidden,
+                includeMissingContent = source.includeMissingContent,
+                developerMode = source.developerMode,
+                fallback = source.fallback,
+                sort = source.sort
+            };
         }
 
         private static bool LifecycleVisible(KnowledgeSubjectSnapshot subject, KnowledgeBrowserFilter filter)

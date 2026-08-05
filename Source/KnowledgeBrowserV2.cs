@@ -302,6 +302,9 @@ namespace KnowledgeFramework
                     KnowledgeBrowserLabels.ContextSelection(browserRow.resolvedContext, schema.id, subject.id, pawn, scope))
                 : "KnowledgeFramework_ContextValue".Translate(
                     KnowledgeBrowserLabels.ContextSelection(browserRow.requestedContext, schema.id, subject.id, pawn, scope));
+            string stageSource = KnowledgeBrowserLabels.StageProvenance(browserRow.stageProvenance);
+            if (!stageSource.NullOrEmpty())
+                contextText = contextText + " " + "KnowledgeFramework_StageSource".Translate(stageSource);
             GUI.color = Color.gray;
             Widgets.Label(new Rect(inner.x, inner.y + 62f, inner.width, 22f), contextText);
             GUI.color = Color.white;

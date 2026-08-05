@@ -549,6 +549,8 @@ namespace KnowledgeFramework
             stageId = stageId?.Trim();
             contextTypeId = contextTypeId?.Trim();
             contextId = contextId?.Trim();
+            domainId = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId) ?? subjectId;
             if (contextTypeId.NullOrEmpty() != contextId.NullOrEmpty())
             {
                 contextTypeId = null;
@@ -1033,6 +1035,8 @@ namespace KnowledgeFramework
         internal KnowledgeStageStateRecord StageV3(string domainId, string subjectId, Pawn pawn, bool colony,
             KnowledgeContextKey context, bool create)
         {
+            domainId = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId) ?? subjectId;
             StageRuntimeKey key = new StageRuntimeKey(domainId, subjectId, pawn, colony, context);
             if (stagesV3Index.TryGetValue(key, out KnowledgeStageStateRecord result) || !create) return result;
             result = new KnowledgeStageStateRecord { domainId = domainId, subjectId = subjectId, pawn = pawn, colony = colony,
@@ -1052,7 +1056,24 @@ namespace KnowledgeFramework
         }
 
         internal KnowledgeAccrualStateRecord AccrualLegacyV3(string legacyKey) =>
-            accrualV3.FirstOrDefault(item => item != null && item.legacyKey == legacyKey);
+            AccrualCompatibilityV3(new[] { legacyKey });
+
+        internal KnowledgeAccrualStateRecord AccrualCompatibilityV3(IEnumerable<string> legacyKeys)
+        {
+            HashSet<string> keys = new HashSet<string>((legacyKeys ?? Array.Empty<string>()).Where(item => !item.NullOrEmpty()), StringComparer.Ordinal);
+            List<KnowledgeAccrualStateRecord> matches = accrualV3.Where(item => item != null &&
+                (keys.Contains(item.key) || keys.Contains(item.legacyKey))).OrderBy(item => item.key, StringComparer.Ordinal).ToList();
+            if (matches.Count == 0) return null;
+            KnowledgeAccrualStateRecord result = matches[0];
+            foreach (KnowledgeAccrualStateRecord duplicate in matches.Skip(1).ToList())
+            {
+                MergeAccrual(result, duplicate);
+                accrualV3.Remove(duplicate);
+                if (!duplicate.key.NullOrEmpty()) accrualV3Index.Remove(duplicate.key);
+            }
+            if (!result.key.NullOrEmpty()) accrualV3Index[result.key] = result;
+            return result;
+        }
 
         internal KnowledgeAccrualStateRecord MigrateAccrualV3(KnowledgeAccrualStateRecord record, string modernKey)
         {
@@ -1143,6 +1164,15 @@ namespace KnowledgeFramework
             bool colony = false) => stagesV3.Where(item => item != null && item.domainId == domainId && item.colony == colony &&
                 (subjectId.NullOrEmpty() || item.subjectId == subjectId) && (colony || pawn == null || item.pawn == pawn));
 
+        internal void RemoveStageV3(string domainId, string subjectId, Pawn pawn, bool colony, KnowledgeContextKey context)
+        {
+            domainId = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId) ?? subjectId;
+            StageRuntimeKey key = new StageRuntimeKey(domainId, subjectId, pawn, colony, context);
+            stagesV3.RemoveAll(item => item != null && new StageRuntimeKey(item.domainId, item.subjectId, item.pawn, item.colony, item.Context).Equals(key));
+            stagesV3Index.Remove(key);
+        }
+
         internal IEnumerable<KnowledgeSubjectRelationStateRecord> RelationRecordsV3(string domainId, string subjectId = null) =>
             relationsV3.Where(item => item != null && (domainId.NullOrEmpty() || item.domainId == domainId || item.toDomainId == domainId) &&
                 (subjectId.NullOrEmpty() || item.fromSubjectId == subjectId || item.toSubjectId == subjectId));
@@ -1226,8 +1256,16 @@ namespace KnowledgeFramework
             milestonesV3.RemoveAll(item => item?.domainId == domainId);
             stagesV3.RemoveAll(item => item?.domainId == domainId);
             relationsV3.RemoveAll(item => item?.domainId == domainId || item?.toDomainId == domainId);
-            accrualV3.RemoveAll(item => item?.domainId == domainId ||
-                item?.domainId.NullOrEmpty() == true && item.key != null && item.key.StartsWith(domainId + "\n", StringComparison.Ordinal));
+            string canonicalDomain = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            accrualV3.RemoveAll(item =>
+            {
+                if (item == null) return false;
+                string recordDomain = KnowledgeRegistry.ResolveDomainId(item.domainId) ?? item.domainId;
+                string keyDomain = item.key.NullOrEmpty() ? null : item.key.Split(new[] { '\n' }, 2)[0];
+                string legacyDomain = item.legacyKey.NullOrEmpty() ? null : item.legacyKey.Split(new[] { '\n' }, 2)[0];
+                return recordDomain == canonicalDomain || KnowledgeRegistry.ResolveDomainId(keyDomain) == canonicalDomain ||
+                    KnowledgeRegistry.ResolveDomainId(legacyDomain) == canonicalDomain;
+            });
             subjectOverridesV3.RemoveAll(item => item?.domainId == domainId);
             sharedExpertiseV3.RemoveAll(item => item?.domainId == domainId);
             RebuildV3Indexes();
@@ -1332,6 +1370,13 @@ namespace KnowledgeFramework
             item.sourceInstanceId = item.sourceInstanceId?.Trim();
             item.specimenId = item.specimenId?.Trim();
             item.contextKey = item.contextKey?.Trim();
+            string historicalDomainId = item.domainId;
+            string historicalSubjectId = item.subjectId;
+            item.domainId = KnowledgeRegistry.ResolveDomainId(item.domainId) ?? item.domainId;
+            item.subjectId = KnowledgeRegistry.ResolveSubjectId(item.domainId, item.subjectId) ?? item.subjectId;
+            if (currentLayout && !originalKey.NullOrEmpty() &&
+                (historicalDomainId != item.domainId || historicalSubjectId != item.subjectId))
+                item.legacyKey = item.legacyKey.NullOrEmpty() ? originalKey : item.legacyKey;
             KnowledgeObservationDef policyDefinition = ResolveAccrualDefinition(item);
             KnowledgeAccrualPolicy policy = policyDefinition?.accrualPolicy;
             if (currentLayout && policy != null)

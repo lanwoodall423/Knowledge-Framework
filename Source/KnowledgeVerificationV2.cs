@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Text;
 using LudeonTK;
 using RimWorld;
 using Verse;
@@ -11,15 +13,32 @@ namespace KnowledgeFramework
     {
         public readonly int passed;
         public readonly IReadOnlyList<string> failures;
-        public bool Success => failures.Count == 0;
+        public readonly IReadOnlyList<string> passedTests;
+        public readonly int skipped;
+        public readonly int unavailable;
+        public readonly int purePassed;
+        public readonly int pureFailed;
+        public readonly int gamePassed;
+        public readonly int gameFailed;
+        public bool Success => failures.Count == 0 && unavailable == 0;
 
-        internal KnowledgeVerificationResult(int passed, List<string> failures)
+        internal KnowledgeVerificationResult(int passed, List<string> failures, IEnumerable<string> passedTests = null,
+            int skipped = 0, int unavailable = 0, int purePassed = 0, int pureFailed = 0,
+            int gamePassed = 0, int gameFailed = 0)
         {
             this.passed = passed;
             this.failures = failures.AsReadOnly();
+            this.passedTests = (passedTests ?? Enumerable.Empty<string>()).Distinct(StringComparer.Ordinal).ToList().AsReadOnly();
+            this.skipped = Math.Max(0, skipped);
+            this.unavailable = Math.Max(0, unavailable);
+            this.purePassed = Math.Max(0, purePassed);
+            this.pureFailed = Math.Max(0, pureFailed);
+            this.gamePassed = Math.Max(0, gamePassed);
+            this.gameFailed = Math.Max(0, gameFailed);
         }
 
-        public override string ToString() => Success ? passed + " checks passed" : passed + " passed; failures: " + string.Join(", ", failures);
+        public override string ToString() => Success ? passed + " checks passed" :
+            passed + " passed; failures=" + failures.Count + "; unavailable=" + unavailable;
     }
 
     public static class KnowledgeFrameworkVerification
@@ -28,6 +47,7 @@ namespace KnowledgeFramework
 
         public static KnowledgeVerificationResult RunPureTests()
         {
+            KnowledgeVerificationTrace.Begin();
             int passed = 0;
             List<string> failures = new List<string>();
             Check("rank transitions", KnowledgeRanks.ForExperience(99f, 100f, 300f, 700f) == KnowledgeRank.Novice &&
@@ -78,19 +98,23 @@ namespace KnowledgeFramework
             KnowledgeVerificationResult v3 = KnowledgeFrameworkVerificationV3.RunPureTests();
             passed += v3.passed;
             failures.AddRange(v3.failures.Select(value => "v3 " + value));
-            return new KnowledgeVerificationResult(passed, failures);
+            return new KnowledgeVerificationResult(passed, failures,
+                KnowledgeVerificationTrace.End().Concat(v3.passedTests), 0, 0,
+                passed, failures.Count);
         }
 
         public static KnowledgeVerificationResult RunGameTests(Pawn pawn)
         {
+            KnowledgeVerificationTrace.Begin();
             KnowledgeVerificationResult pure = RunPureTests();
             int passed = pure.passed;
             List<string> failures = pure.failures.ToList();
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null || pawn == null)
             {
-                failures.Add("active game and pawn required (expected=active GameComponent and non-null Pawn actual=missing)");
-                return new KnowledgeVerificationResult(passed, failures);
+                return new KnowledgeVerificationResult(passed, failures,
+                    KnowledgeVerificationTrace.End().Concat(pure.passedTests), 0, 1,
+                    pure.passed, pure.failures.Count, 0, 0);
             }
 
             KnowledgeFacetDef identity = NewFacet("identity", 100f);
@@ -244,9 +268,14 @@ namespace KnowledgeFramework
                 KnowledgeRegistry.ClearDiagnostics(TestDomain);
             }
             KnowledgeVerificationResult v3 = KnowledgeFrameworkVerificationV3.RunGameTests(pawn);
+            int v2GamePassed = Math.Max(0, passed - pure.passed);
+            int v2GameFailed = Math.Max(0, failures.Count - pure.failures.Count);
             passed += v3.passed;
             failures.AddRange(v3.failures.Select(value => "v3 " + value));
-            return new KnowledgeVerificationResult(passed, failures);
+            return new KnowledgeVerificationResult(passed, failures,
+                KnowledgeVerificationTrace.End().Concat(pure.passedTests).Concat(v3.passedTests), 0,
+                v3.unavailable, pure.passed, pure.failures.Count,
+                v2GamePassed + v3.gamePassed, v2GameFailed + v3.gameFailed);
         }
 
         [DebugAction("Knowledge Framework", "Run complete V2/V3 behavioral verification", actionType = DebugActionType.Action,
@@ -255,12 +284,37 @@ namespace KnowledgeFramework
         {
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn ?? Find.CurrentMap?.mapPawns.FreeColonists.FirstOrDefault();
             KnowledgeVerificationResult result = RunGameTests(pawn);
+            string reportPath = WriteReport(result);
             Log.Message("[Knowledge Framework] Behavioral verification " + (result.Success ? "PASS" : "FAIL") +
-                ": passed=" + result.passed + " failed=" + result.failures.Count);
+                ": pure=" + result.purePassed + "/" + (result.purePassed + result.pureFailed) +
+                " game=" + result.gamePassed + "/" + (result.gamePassed + result.gameFailed) +
+                " unavailable=" + result.unavailable + " report=" + reportPath);
             if (!result.Success)
                 Log.Warning("[Knowledge Framework] Behavioral verification failures: " + string.Join("; ", result.failures));
             Messages.Message(result.Success ? "KnowledgeFramework_VerificationPassed".Translate() : "KnowledgeFramework_VerificationFailed".Translate(),
                 result.Success ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+        }
+
+        private static string WriteReport(KnowledgeVerificationResult result)
+        {
+            string path = Path.Combine(GenFilePaths.ConfigFolderPath, "KnowledgeFramework_Verification.txt");
+            try
+            {
+                StringBuilder report = new StringBuilder();
+                report.AppendLine("Knowledge Framework behavioral verification");
+                report.AppendLine("pure passed=" + result.purePassed + " failed=" + result.pureFailed + " skipped=" + result.skipped + " unavailable=0");
+                report.AppendLine("game-state passed=" + result.gamePassed + " failed=" + result.gameFailed + " skipped=0 unavailable=" + result.unavailable);
+                report.AppendLine("manual-ui passed=0 failed=0 skipped=0 unavailable=1");
+                report.AppendLine("passed-tests=" + string.Join(";", result.passedTests));
+                report.AppendLine("failures=" + string.Join(";", result.failures));
+                File.WriteAllText(path, report.ToString());
+                return path;
+            }
+            catch (Exception exception)
+            {
+                Log.Warning("[Knowledge Framework] Could not write verification report: " + exception);
+                return "unavailable";
+            }
         }
 
         private static KnowledgeObservation NewObservation(Pawn pawn, string facetId, float knowledge, bool success, float expertise)
@@ -294,8 +348,33 @@ namespace KnowledgeFramework
 
         private static void Check(string name, bool condition, ref int passed, List<string> failures)
         {
+            KnowledgeVerificationTrace.Record(name, condition);
             if (condition) passed++;
             else failures.Add(name + " (expected=true, actual=false)");
+        }
+    }
+
+    internal static class KnowledgeVerificationTrace
+    {
+        [ThreadStatic]
+        private static Stack<List<string>> stacks;
+
+        internal static void Begin()
+        {
+            if (stacks == null) stacks = new Stack<List<string>>();
+            stacks.Push(new List<string>());
+        }
+
+        internal static void Record(string name, bool passed)
+        {
+            if (passed && stacks != null && stacks.Count > 0 && !name.NullOrEmpty())
+                stacks.Peek().Add(name);
+        }
+
+        internal static IReadOnlyList<string> End()
+        {
+            if (stacks == null || stacks.Count == 0) return new List<string>().AsReadOnly();
+            return stacks.Pop().Distinct(StringComparer.Ordinal).ToList().AsReadOnly();
         }
     }
 }

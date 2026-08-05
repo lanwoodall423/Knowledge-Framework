@@ -64,4 +64,9 @@
   <KnowledgeFramework_RequirementKnowledge>Knowledge {0}</KnowledgeFramework_RequirementKnowledge>
   <KnowledgeFramework_RequirementConfidence>Confidence {0}</KnowledgeFramework_RequirementConfidence>
   <KnowledgeFramework_RequirementDocumentation>Documentation</KnowledgeFramework_RequirementDocumentation>
+  <KnowledgeFramework_StageSource>Stage source: {0}</KnowledgeFramework_StageSource>
+  <KnowledgeFramework_StageSourceCalculatedExact>calculated for this context</KnowledgeFramework_StageSourceCalculatedExact>
+  <KnowledgeFramework_StageSourcePersistedExact>recorded for this context</KnowledgeFramework_StageSourcePersistedExact>
+  <KnowledgeFramework_StageSourceInheritedParent>inherited from a parent context</KnowledgeFramework_StageSourceInheritedParent>
+  <KnowledgeFramework_StageSourceInheritedGlobal>inherited from global knowledge</KnowledgeFramework_StageSourceInheritedGlobal>
 </LanguageData>

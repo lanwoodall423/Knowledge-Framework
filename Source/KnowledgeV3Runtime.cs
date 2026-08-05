@@ -79,11 +79,30 @@ namespace KnowledgeFramework
             if (context.IsEmpty || context.IsPartial) return null;
             IKnowledgeContextPresentationProvider provider = PresentationProvider(context.typeId);
             if (provider == null) return null;
+            if (!IsProviderKnownContext(context, domainId, subjectId, pawn, scope)) return null;
             try { return provider.ValueLabel(context, domainId, subjectId, pawn, scope); }
             catch (Exception exception)
             {
                 KnowledgeLog.ErrorOnce("context-label:" + context.typeId, "A context value label provider failed.", exception);
                 return null;
+            }
+        }
+
+        public static bool IsProviderKnownContext(KnowledgeContextKey context, string domainId, string subjectId,
+            Pawn pawn, KnowledgeScope scope)
+        {
+            if (context.IsEmpty || context.IsPartial) return false;
+            IKnowledgeContextPresentationProvider provider = PresentationProvider(context.typeId);
+            if (provider == null) return false;
+            try
+            {
+                return (provider.KnownContexts(domainId, subjectId, pawn, scope) ?? Enumerable.Empty<KnowledgeContextKey>())
+                    .Any(item => item.Equals(context));
+            }
+            catch (Exception exception)
+            {
+                KnowledgeLog.ErrorOnce("context-known:" + context.typeId, "A context presentation provider failed while authorizing a value.", exception);
+                return false;
             }
         }
 
@@ -568,6 +587,7 @@ namespace KnowledgeFramework
             HashSet<string> plannedContexts = new HashSet<string>(StringComparer.Ordinal);
             Dictionary<string, string> plannedSpecimens = new Dictionary<string, string>(StringComparer.Ordinal);
             Dictionary<string, string> plannedLastContexts = new Dictionary<string, string>(StringComparer.Ordinal);
+            Dictionary<string, int> plannedLastTicks = new Dictionary<string, int>(StringComparer.Ordinal);
             Dictionary<string, float> logicalFactors = new Dictionary<string, float>(StringComparer.Ordinal);
             Dictionary<string, float> logicalReliabilityRatios = new Dictionary<string, float>(StringComparer.Ordinal);
             for (int i = 0; i < input.Observations.Count; i++)
@@ -589,7 +609,7 @@ namespace KnowledgeFramework
                     {
                         float beforeReliability = candidate.sourceReliability;
                         if (!ApplyNoveltyPreview(candidate, schema, plannedAccrual, plannedSuccesses, plannedFailures, plannedSources,
-                            plannedContexts, plannedSpecimens, plannedLastContexts, out float factor, out error)) return false;
+                            plannedContexts, plannedSpecimens, plannedLastContexts, plannedLastTicks, out float factor, out error)) return false;
                         logicalFactors[candidate.logicalEventGroupId] = factor;
                         logicalReliabilityRatios[candidate.logicalEventGroupId] = beforeReliability > 0f
                             ? candidate.sourceReliability / beforeReliability : 1f;
@@ -825,7 +845,8 @@ namespace KnowledgeFramework
                 witnessDistribution = input.witnessDistribution,
                 sharedExpertiseNamespaceId = input.sharedExpertiseNamespaceId,
                 sharedExpertiseWeight = input.sharedExpertiseWeight,
-                logicalEventGroupId = input.logicalEventGroupId
+                logicalEventGroupId = input.logicalEventGroupId,
+                accrualBackingKey = input.accrualBackingKey
             };
         }
 
@@ -863,6 +884,7 @@ namespace KnowledgeFramework
         private static bool ApplyNoveltyPreview(KnowledgeObservation input, KnowledgeSchema schema, Dictionary<string, int> planned,
             Dictionary<string, int> plannedSuccesses, Dictionary<string, int> plannedFailures, HashSet<string> plannedSources,
             HashSet<string> plannedContexts, Dictionary<string, string> plannedSpecimens, Dictionary<string, string> plannedLastContexts,
+            Dictionary<string, int> plannedLastTicks,
             out float factor, out string error)
         {
             factor = 1f;
@@ -871,7 +893,7 @@ namespace KnowledgeFramework
             KnowledgeAccrualPolicy policy = definition?.accrualPolicy;
             if (policy == null) return true;
             if (!KnowledgeAccrualService.Preview(input, policy, definition.StableId, planned, plannedSuccesses, plannedFailures,
-                plannedSources, plannedContexts, plannedSpecimens, plannedLastContexts, out factor, out error)) return false;
+                plannedSources, plannedContexts, plannedSpecimens, plannedLastContexts, plannedLastTicks, out factor, out error)) return false;
             input.novelty *= factor;
             input.skipApplication = factor <= 0f;
             return KnowledgeMath.IsFinite(input.novelty);
@@ -907,7 +929,8 @@ namespace KnowledgeFramework
         internal static bool Preview(KnowledgeObservation input, KnowledgeAccrualPolicy policy, string policyNamespace,
             Dictionary<string, int> planned, Dictionary<string, int> plannedSuccesses, Dictionary<string, int> plannedFailures,
             HashSet<string> plannedSources, HashSet<string> plannedContexts, Dictionary<string, string> plannedSpecimens,
-            Dictionary<string, string> plannedLastContexts, out float factor, out string error)
+            Dictionary<string, string> plannedLastContexts, Dictionary<string, int> plannedLastTicks,
+            out float factor, out string error)
         {
             factor = 1f;
             error = null;
@@ -919,38 +942,37 @@ namespace KnowledgeFramework
             string key = Key(input, policy, policyNamespace);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             KnowledgeAccrualStateRecord record = component?.AccrualV3(key, false);
-            if (record == null)
-            {
-                string legacyKey = LegacyKey(input, policy);
-                record = component?.AccrualLegacyV3(legacyKey);
-            }
-            else
+            KnowledgeAccrualStateRecord legacyState = component?.AccrualCompatibilityV3(LegacyKeys(input, policy));
+            if (legacyState != null)
             {
                 // A pre-V4 record can also remain beside a newly written
                 // scoped record. Prefer the shared legacy state so an upgrade
                 // cannot grant a second capped or unique event in another
                 // scope while the old ownership is still ambiguous.
-                KnowledgeAccrualStateRecord legacy = component?.AccrualLegacyV3(LegacyKey(input, policy));
-                if (legacy != null && legacy != record) record = legacy;
+                if (legacyState != record) record = legacyState;
             }
             PrepareLegacyState(record, input, policy, policyNamespace);
             int existing = record?.count ?? 0;
-            int pending = planned.TryGetValue(key, out int plannedCount) ? plannedCount : 0;
+            string backingKey = record?.key.NullOrEmpty() == false ? record.key : key;
+            input.accrualBackingKey = backingKey;
+            int pending = planned.TryGetValue(backingKey, out int plannedCount) ? plannedCount : 0;
             int projectedBefore = existing + pending;
-            string sourceKey = key + "\nsource\n" + input.sourceInstanceId;
+            string sourceKey = backingKey + "\nsource\n" + input.sourceInstanceId;
             bool sourceSeen = record != null && (record.sourceInstanceIds ?? new List<string>()).Contains(input.sourceInstanceId) ||
                 record != null && record.sourceInstanceId == input.sourceInstanceId || plannedSources.Contains(sourceKey);
             string currentContext = KnowledgeContextForState(input);
             bool contextSeen = record != null && (record.contextKeys ?? new List<string>()).Contains(currentContext) ||
-                plannedContexts.Contains(key + "\ncontext\n" + currentContext);
+                plannedContexts.Contains(backingKey + "\ncontext\n" + currentContext);
+            int now = CurrentTick();
+            int previousTick = plannedLastTicks.TryGetValue(backingKey, out int plannedTick) ? plannedTick : record?.lastTick ?? 0;
             if (policy.uniquePerSourceInstance && sourceSeen || policy.uniquePerPawnAndSourceInstance && sourceSeen ||
                 policy.uniquePerSubjectAndContext && contextSeen ||
-                policy.cooldownTicks > 0 && (record != null && CurrentTick() - record.lastTick < policy.cooldownTicks || pending > 0))
+                policy.cooldownTicks > 0 && (pending > 0 || now - previousTick < policy.cooldownTicks && (record != null || plannedLastTicks.ContainsKey(backingKey))))
             {
                 factor = 0f;
                 return true;
             }
-            int tick = Find.TickManager?.TicksGame ?? 0;
+            int tick = now;
             int dailyExisting = record != null && record.day == tick / 60000 ? record.dailyCount : 0;
             int dailyProjectedBefore = dailyExisting + pending;
             // Caps are checked before accepting the current event: a cap of N accepts
@@ -962,8 +984,8 @@ namespace KnowledgeFramework
                 return true;
             }
             if (projectedBefore == 0) factor *= Math.Max(0f, policy.firstObservationBonus);
-            int pendingSuccesses = plannedSuccesses.TryGetValue(key, out int plannedSuccessCount) ? plannedSuccessCount : 0;
-            int pendingFailures = plannedFailures.TryGetValue(key, out int plannedFailureCount) ? plannedFailureCount : 0;
+            int pendingSuccesses = plannedSuccesses.TryGetValue(backingKey, out int plannedSuccessCount) ? plannedSuccessCount : 0;
+            int pendingFailures = plannedFailures.TryGetValue(backingKey, out int plannedFailureCount) ? plannedFailureCount : 0;
             if ((record == null || record.outcomeHistoryComplete) && input.success && (record?.successCount ?? 0) + pendingSuccesses == 0)
                 factor *= Math.Max(0f, policy.firstSuccessBonus);
             if ((record == null || record.outcomeHistoryComplete) && !input.success && (record?.failureCount ?? 0) + pendingFailures == 0)
@@ -972,10 +994,10 @@ namespace KnowledgeFramework
                 factor *= (float)Math.Pow(1f - policy.diminishingReturns, projectedBefore);
             // "Different" means different from the most recently accepted
             // specimen/context, not merely different from anything in history.
-            string previousSpecimen = plannedSpecimens.TryGetValue(key, out string plannedSpecimen) ? plannedSpecimen : record?.specimenId;
+            string previousSpecimen = plannedSpecimens.TryGetValue(backingKey, out string plannedSpecimen) ? plannedSpecimen : record?.specimenId;
             if (!input.specimenId.NullOrEmpty() && !previousSpecimen.NullOrEmpty() && input.specimenId != previousSpecimen)
                 factor *= Math.Max(0f, policy.differentSpecimenBonus);
-            string previousContext = plannedLastContexts.TryGetValue(key, out string plannedContext) ? plannedContext : record?.contextKey;
+            string previousContext = plannedLastContexts.TryGetValue(backingKey, out string plannedContext) ? plannedContext : record?.contextKey;
             if (!previousContext.NullOrEmpty() && currentContext != previousContext)
                 factor *= Math.Max(0f, policy.differentContextBonus);
             // An independent source ID has never been accepted for this state;
@@ -989,13 +1011,14 @@ namespace KnowledgeFramework
             if (!KnowledgeMath.IsFinite(input.sourceReliability)) { error = "Accrual confidence adjustment is not finite."; return false; }
             if (!KnowledgeMath.IsFinite(factor)) { error = "Accrual factor is not finite."; return false; }
             if (factor <= 0f) return true;
-            planned[key] = pending + 1;
-            if (input.success) plannedSuccesses[key] = pendingSuccesses + 1;
-            else plannedFailures[key] = pendingFailures + 1;
+            planned[backingKey] = pending + 1;
+            if (input.success) plannedSuccesses[backingKey] = pendingSuccesses + 1;
+            else plannedFailures[backingKey] = pendingFailures + 1;
             if (!input.sourceInstanceId.NullOrEmpty()) plannedSources.Add(sourceKey);
-            plannedContexts.Add(key + "\ncontext\n" + currentContext);
-            plannedSpecimens[key] = input.specimenId;
-            plannedLastContexts[key] = currentContext;
+            plannedContexts.Add(backingKey + "\ncontext\n" + currentContext);
+            plannedSpecimens[backingKey] = input.specimenId;
+            plannedLastContexts[backingKey] = currentContext;
+            plannedLastTicks[backingKey] = tick;
             return true;
         }
 
@@ -1007,9 +1030,10 @@ namespace KnowledgeFramework
             if (policy == null) return;
             input.accrualCommitted = true;
             string key = Key(input, policy, definition.StableId);
-            KnowledgeAccrualStateRecord record = component.AccrualV3(key, false);
+            KnowledgeAccrualStateRecord record = input.accrualBackingKey.NullOrEmpty()
+                ? component.AccrualV3(key, false) : component.AccrualV3(input.accrualBackingKey, false);
             bool compatibilityState = record != null && !record.outcomeHistoryComplete;
-            KnowledgeAccrualStateRecord legacy = component.AccrualLegacyV3(LegacyKey(input, policy));
+            KnowledgeAccrualStateRecord legacy = component.AccrualCompatibilityV3(LegacyKeys(input, policy));
             if (legacy != null && legacy != record)
             {
                 record = legacy;
@@ -1176,12 +1200,24 @@ namespace KnowledgeFramework
         // This reproduces the pre-namespaced key layout used by saves before
         // V4. It is only a lookup bridge; newly written state always uses
         // BuildKey and retains the old key on the migrated record.
-        private static string LegacyKey(KnowledgeObservation input, KnowledgeAccrualPolicy policy)
+        private static IEnumerable<string> LegacyKeys(KnowledgeObservation input, KnowledgeAccrualPolicy policy)
+        {
+            if (input == null || policy == null) yield break;
+            HashSet<string> keys = new HashSet<string>(StringComparer.Ordinal);
+            string raw = LegacyKey(input, policy, input.domainId, input.subjectId);
+            if (!raw.NullOrEmpty() && keys.Add(raw)) yield return raw;
+            string domainId = KnowledgeRegistry.ResolveDomainId(input.domainId) ?? input.domainId;
+            string subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, input.subjectId) ?? input.subjectId;
+            string canonical = LegacyKey(input, policy, domainId, subjectId);
+            if (!canonical.NullOrEmpty() && keys.Add(canonical)) yield return canonical;
+        }
+
+        private static string LegacyKey(KnowledgeObservation input, KnowledgeAccrualPolicy policy, string domainId, string subjectId)
         {
             if (input == null || policy == null) return null;
             if ((policy.uniquePerSourceInstance || policy.uniquePerPawnAndSourceInstance) && input.sourceInstanceId.NullOrEmpty()) return null;
             if (!policy.uniquePerSourceInstance && !policy.uniquePerPawnAndSourceInstance && !policy.uniquePerSubjectAndContext) return null;
-            List<string> parts = new List<string> { input.domainId, input.subjectId };
+            List<string> parts = new List<string> { domainId, subjectId };
             if (!input.facetId.NullOrEmpty()) parts.Add(input.facetId);
             if (policy.uniquePerPawnAndSourceInstance) parts.Add((input.observer?.thingIDNumber ?? 0).ToString());
             if (policy.uniquePerSourceInstance) parts.Add(input.sourceInstanceId ?? string.Empty);

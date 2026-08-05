@@ -171,6 +171,9 @@ namespace KnowledgeFramework
             foreach (string key in DynamicSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) DynamicSubjects.Remove(key);
             foreach (string key in SubjectOverrides.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectOverrides.Remove(key);
             foreach (string key in SubjectRegistrationSources.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectRegistrationSources.Remove(key);
+            foreach (string key in DomainAliases.Where(item => item.Key == domainId || ResolveDomainId(item.Value) == domainId)
+                .Select(item => item.Key).ToList()) DomainAliases.Remove(key);
+            foreach (string key in SubjectAliases.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectAliases.Remove(key);
             KnowledgeProviderRegistry.Unregister(domainId);
             KnowledgeV2Ui.Unregister(domainId);
             KnowledgeEffects.Unregister(domainId);

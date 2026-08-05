@@ -171,6 +171,15 @@ namespace KnowledgeFramework
         public override string ToString() => IsEmpty ? string.Empty : typeId + ":" + stableId;
     }
 
+    public enum KnowledgeStageProvenance
+    {
+        None,
+        CalculatedExact,
+        PersistedExact,
+        InheritedParent,
+        InheritedGlobal
+    }
+
     /// <summary>Resolved stage state for a requested context. A non-empty resolvedContext can be inherited through fallback.</summary>
     public sealed class KnowledgeStageSnapshot
     {
@@ -183,9 +192,11 @@ namespace KnowledgeFramework
         public readonly KnowledgeContextKey resolvedContext;
         public readonly bool usedContextFallback;
         public readonly bool contextSensitive;
+        public readonly KnowledgeStageProvenance provenance;
 
         internal KnowledgeStageSnapshot(string domainId, string subjectId, string stageId, Pawn pawn, KnowledgeScope scope,
-            KnowledgeContextKey requestedContext, KnowledgeContextKey resolvedContext, bool usedContextFallback, bool contextSensitive)
+            KnowledgeContextKey requestedContext, KnowledgeContextKey resolvedContext, bool usedContextFallback, bool contextSensitive,
+            KnowledgeStageProvenance provenance = KnowledgeStageProvenance.None)
         {
             this.domainId = domainId;
             this.subjectId = subjectId;
@@ -196,6 +207,7 @@ namespace KnowledgeFramework
             this.resolvedContext = resolvedContext;
             this.usedContextFallback = usedContextFallback;
             this.contextSensitive = contextSensitive;
+            this.provenance = provenance;
         }
     }
 

@@ -44,4 +44,4 @@ if (-not $SkipBuild) {
 $behavioral = Join-Path $root 'DevTools\Run-KnowledgeFrameworkBehavioralTests.ps1'
 & $behavioral -SkipBuild
 if ($LASTEXITCODE -ne 0) { throw 'Knowledge Framework executable behavioral verification failed or was blocked.' }
-Write-Output ('Knowledge Framework V3 verification passed ({0} structural checks + executable pure suite; game suite requires a RimWorld map).' -f $checks.Count)
+Write-Output ('Knowledge Framework V3 verification: structural passed={0} failed=0; pure passed=executable; game passed=0 failed=0 unavailable=1 (RimWorld map required); manual UI unavailable=1.' -f $checks.Count)

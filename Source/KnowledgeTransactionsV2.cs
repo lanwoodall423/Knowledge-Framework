@@ -54,6 +54,7 @@ namespace KnowledgeFramework
         internal bool accrualCommitted;
         internal bool accrualOwner;
         internal string logicalEventGroupId;
+        internal string accrualBackingKey;
     }
 
     public sealed class KnowledgeTransaction

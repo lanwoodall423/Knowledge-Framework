@@ -1,0 +1,75 @@
+{
+  "manifestVersion": 2,
+  "adapterId": "KnowledgeFramework",
+  "displayName": "Knowledge Framework",
+  "version": "3.0.0",
+  "generation": "20260805084233487",
+  "buildUtc": "2026-08-05T12:42:35.4956697Z",
+  "assemblyFile": "KnowledgeFramework.BridgeAdapter.20260805084233487.dll",
+  "assemblyIdentity": "KnowledgeFramework.BridgeAdapter.20260805084233487, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+  "assemblyBytes": 12800,
+  "contentHash": "DF0A0DDA8438BE895EFF4379614AAF3D02572995B04ED1CFCC60EDA6EA437AE7",
+  "providerType": "KnowledgeFrameworkBridgeAdapter.KnowledgeFrameworkBridgeAdapter",
+  "protocolMin": 10,
+  "protocolMax": 10,
+  "commands": [
+    {
+      "name": "KF_V2_STATE",
+      "description": "Inspect registered schemas and selected pawn state",
+      "mode": "PureRead",
+      "cost": "Normal",
+      "requiresMap": true,
+      "argumentSchema": "legacy:string",
+      "resultSchema": "legacy:lines",
+      "schemaVersion": 1,
+      "minimumExecutionBudgetMs": 25,
+      "providerCommand": "KF_V2_STATE"
+    },
+    {
+      "name": "KF_V2_VALIDATE",
+      "description": "Inspect validation issues and runtime diagnostics",
+      "mode": "PureRead",
+      "cost": "Normal",
+      "requiresMap": false,
+      "argumentSchema": "legacy:string",
+      "resultSchema": "legacy:lines",
+      "schemaVersion": 1,
+      "minimumExecutionBudgetMs": 25,
+      "providerCommand": "KF_V2_VALIDATE"
+    },
+    {
+      "name": "KF_V3_STATE",
+      "description": "Inspect claims, contexts, milestones, relations, and capability versions",
+      "mode": "PureRead",
+      "cost": "Normal",
+      "requiresMap": true,
+      "argumentSchema": "legacy:string",
+      "resultSchema": "legacy:lines",
+      "schemaVersion": 1,
+      "minimumExecutionBudgetMs": 25,
+      "providerCommand": "KF_V3_STATE"
+    },
+    {
+      "name": "KF_V2_VERIFY",
+      "description": "Run the bounded V2 verification suite in the sandbox",
+      "mode": "TemporaryTestMutation",
+      "cost": "Simulation",
+      "requiresMap": true,
+      "argumentSchema": "legacy:string",
+      "resultSchema": "legacy:lines",
+      "schemaVersion": 1,
+      "minimumExecutionBudgetMs": 25,
+      "providerCommand": "KF_V2_VERIFY"
+    }
+  ],
+  "requiredPackageIds": [
+    "lan.knowledgeframework"
+  ],
+  "optionalPackageIds": [],
+  "changeSummary": "Bounded Knowledge Framework V2/V3 runtime verification.",
+  "assemblySource": "file",
+  "modulePackageId": null,
+  "moduleRelativePath": null,
+  "moduleMvid": null,
+  "executionContract": null
+}

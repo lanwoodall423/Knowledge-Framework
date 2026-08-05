@@ -45,7 +45,8 @@ namespace KnowledgeFramework
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             KnowledgeSubjectSnapshotV2 legacy = KnowledgeQuery.Subject(domainId, subjectId, pawn, scope);
             if (schema == null || context.IsPartial)
-                return new KnowledgeStageSnapshot(domainId, subjectId, null, pawn, scope, context, KnowledgeContextKey.Empty, false, false);
+                return new KnowledgeStageSnapshot(domainId, subjectId, null, pawn, scope, context, KnowledgeContextKey.Empty, false, false,
+                    KnowledgeStageProvenance.None);
 
             string persistedGlobalStage = legacy?.stageId;
             if (schema.Stage(persistedGlobalStage)?.contextSensitive == true) persistedGlobalStage = null;
@@ -54,36 +55,58 @@ namespace KnowledgeFramework
                     KnowledgeContextFallbackMode.ExactOnly, legacy?.documented == true, false)
                 : EvaluateStages(schema, domainId, subjectId, pawn, scope, KnowledgeContextKey.Empty,
                     KnowledgeContextFallbackMode.ExactOnly, legacy?.documented == true, false);
+            KnowledgeStageProvenance globalProvenance = persistedGlobalStage.NullOrEmpty()
+                ? (globalStageId.NullOrEmpty() ? KnowledgeStageProvenance.None : KnowledgeStageProvenance.CalculatedExact)
+                : KnowledgeStageProvenance.PersistedExact;
             string contextualStageId = null;
             KnowledgeContextKey resolvedContext = KnowledgeContextKey.Empty;
             bool usedFallback = false;
+            KnowledgeStageProvenance contextualProvenance = KnowledgeStageProvenance.None;
             if (schema.stages.Any(item => item.contextSensitive))
             {
-                KnowledgeStageStateRecord persisted = FindContextualStage(domainId, subjectId, pawn, scope, context, fallback,
-                    schema, out resolvedContext, out usedFallback);
-                contextualStageId = persisted?.stageId;
-                string calculated = EvaluateStages(schema, domainId, subjectId, pawn, scope, context, fallback,
-                    legacy?.documented == true, true);
-                if (IsLater(schema, calculated, contextualStageId)) contextualStageId = calculated;
-                if (context.IsEmpty && contextualStageId.NullOrEmpty())
-                    contextualStageId = calculated;
+                foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, fallback))
+                {
+                    KnowledgeStageStateRecord persisted = FindContextualStage(domainId, subjectId, pawn, scope, candidate,
+                        KnowledgeContextFallbackMode.ExactOnly, schema, out _, out _);
+                    string calculated = EvaluateStages(schema, domainId, subjectId, pawn, scope, candidate,
+                        KnowledgeContextFallbackMode.ExactOnly, legacy?.documented == true, true);
+                    string candidateStage = persisted?.stageId;
+                    KnowledgeStageProvenance candidateProvenance = persisted == null
+                        ? (calculated.NullOrEmpty() ? KnowledgeStageProvenance.None : KnowledgeStageProvenance.CalculatedExact)
+                        : KnowledgeStageProvenance.PersistedExact;
+                    if (IsLater(schema, calculated, candidateStage))
+                    {
+                        candidateStage = calculated;
+                        candidateProvenance = KnowledgeStageProvenance.CalculatedExact;
+                    }
+                    if (candidateStage.NullOrEmpty()) continue;
+                    contextualStageId = candidateStage;
+                    contextualProvenance = candidateProvenance;
+                    resolvedContext = candidate;
+                    usedFallback = !candidate.Equals(context);
+                    if (usedFallback)
+                        contextualProvenance = candidate.IsEmpty ? KnowledgeStageProvenance.InheritedGlobal : KnowledgeStageProvenance.InheritedParent;
+                    break;
+                }
             }
-            string selected = IsLater(schema, contextualStageId, globalStageId) ? contextualStageId : globalStageId;
+            bool contextualSelected = IsLater(schema, contextualStageId, globalStageId) ||
+                contextualStageId == globalStageId && !contextualStageId.NullOrEmpty();
+            string selected = contextualSelected ? contextualStageId : globalStageId;
             bool selectedContextual = !selected.NullOrEmpty() && schema.Stage(selected)?.contextSensitive == true;
-            if (selectedContextual && resolvedContext.IsEmpty && !context.IsEmpty)
+            KnowledgeStageProvenance selectedProvenance = contextualSelected ? contextualProvenance : globalProvenance;
+            if (!contextualSelected && !context.IsEmpty && !globalStageId.NullOrEmpty())
+            {
+                resolvedContext = KnowledgeContextKey.Empty;
+                usedFallback = true;
+                selectedProvenance = KnowledgeStageProvenance.InheritedGlobal;
+            }
+            else if (contextualSelected && selectedContextual && !context.IsEmpty && resolvedContext.IsEmpty)
             {
                 resolvedContext = context;
                 usedFallback = false;
             }
-            else if (!selectedContextual && !context.IsEmpty && !globalStageId.NullOrEmpty())
-            {
-                // A global stage is intentionally inherited by contextual views;
-                // expose that fact instead of claiming exact-context progress.
-                resolvedContext = KnowledgeContextKey.Empty;
-                usedFallback = true;
-            }
             return new KnowledgeStageSnapshot(domainId, subjectId, selected, pawn, scope, context,
-                resolvedContext, usedFallback, selectedContextual);
+                resolvedContext, usedFallback, selectedContextual, selectedProvenance);
         }
 
         public static bool MeetsReveal(string domainId, string subjectId, string revealId, Pawn pawn = null,

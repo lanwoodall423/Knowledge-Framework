@@ -32,9 +32,14 @@ internal static class Program
             PrintResult(result);
             if (!result.Success) return 1;
 
-            if (!RunPublicV3Audit()) return 1;
-            Console.WriteLine("behavioralSuite=PASS pureProductionChecks={0} publicV3DeclarationAudit=PASS gameSuite=NOT_RUN_NO_MAP", result.passed);
-            return 0;
+            bool auditPassed = PublicV3Audit.Run(typeof(KnowledgeFrameworkVerification).Assembly, result);
+            Console.WriteLine("layer=pure passed={0} failed={1} skipped={2} unavailable={3}",
+                result.purePassed, result.pureFailed, result.skipped, result.unavailable);
+            Console.WriteLine("layer=game-state passed=0 failed=0 skipped=0 unavailable=1 reason=active GameComponent and map required");
+            Console.WriteLine("layer=manual-ui passed=0 failed=0 skipped=0 unavailable=1 reason=human interaction required");
+            Console.WriteLine("behavioralSuite={0} pureProductionChecks={1} publicV3DeclarationAudit={2} gameSuite=UNAVAILABLE_NO_GAME_STATE",
+                auditPassed ? "PASS" : "FAIL", result.purePassed, auditPassed ? "PASS" : "FAIL");
+            return auditPassed ? 0 : 1;
         }
         catch (Exception exception)
         {
@@ -82,39 +87,6 @@ internal static class Program
             Console.Error.WriteLine("FAIL behavior={0} expected=true actual=false", failure);
     }
 
-    private static bool RunPublicV3Audit()
-    {
-        Assembly assembly = typeof(KnowledgeFrameworkVerification).Assembly;
-        bool valid = true;
-        Type[] publicTypes = assembly.GetTypes()
-            .Where(type => type.IsPublic && type.Namespace == "KnowledgeFramework" && type.Name.StartsWith("Knowledge", StringComparison.Ordinal))
-            .OrderBy(type => type.FullName, StringComparer.Ordinal).ToArray();
-        foreach (Type type in publicTypes.Where(value => value.IsEnum))
-        {
-            foreach (string member in Enum.GetNames(type))
-            {
-                FieldInfo field = type.GetField(member);
-                bool obsolete = field.GetCustomAttributes(typeof(ObsoleteAttribute), false).Length != 0;
-                string status = obsolete ? "obsolete-rejected" : "declared-supported";
-                string coverage = obsolete ? "validation-rejection-required" : "declaration-only-no-behavior-claim";
-                Console.WriteLine("AUDIT v3.enum={0}.{1} status={2} coverage={3} execution=reflection-only", type.Name, member, status, coverage);
-            }
-        }
-
-        foreach (Type type in publicTypes.Where(value => !value.IsEnum))
-        {
-            foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
-            {
-                bool obsolete = field.GetCustomAttributes(typeof(ObsoleteAttribute), false).Length != 0;
-                string status = obsolete ? "obsolete-rejected" : "declared-supported";
-                string coverage = obsolete ? "validation-rejection-required" : "declaration-only-no-behavior-claim";
-                Console.WriteLine("AUDIT v3.field={0}.{1} status={2} coverage={3} execution=reflection-only", type.Name, field.Name, status, coverage);
-            }
-        }
-
-        return valid;
-    }
-
     private static string GetOption(string[] args, string name)
     {
         string prefix = "--" + name + "=";
@@ -125,6 +97,6 @@ internal static class Program
     {
         while (exception is TargetInvocationException && exception.InnerException != null)
             exception = exception.InnerException;
-        return exception.GetType().Name + ": " + exception.Message;
+        return exception.ToString();
     }
 }

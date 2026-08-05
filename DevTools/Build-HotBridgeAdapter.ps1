@@ -1,12 +1,13 @@
 param(
-    [string]$BridgeRoot = 'C:\Games\Steam\steamapps\common\RimWorld\Mods\RimWorldDevBridge'
+    [string]$Destination = (Join-Path $PSScriptRoot 'BridgeAdapters'),
+    [string]$PublisherPath = (Join-Path $PSScriptRoot '..\..\RimWorldDevBridge\DevTools\Publish-RimWorldBridgeAdapter.ps1')
 )
 
 $ErrorActionPreference = 'Stop'
 $project = Join-Path $PSScriptRoot 'BridgeAdapter\KnowledgeFramework.BridgeAdapter.csproj'
 $build = Join-Path $PSScriptRoot 'BridgeAdapter\Build'
-$destination = Join-Path $BridgeRoot 'DevTools\HotAdapters'
-$publisher = Join-Path $BridgeRoot 'DevTools\Publish-RimWorldBridgeAdapter.ps1'
+$destination = [IO.Path]::GetFullPath($Destination)
+$publisher = [IO.Path]::GetFullPath($PublisherPath)
 $source = Join-Path $PSScriptRoot 'BridgeAdapter\KnowledgeFrameworkBridgeAdapter.cs'
 $stamp = Get-Date -Format 'yyyyMMddHHmmssfff'
 $assemblyName = "KnowledgeFramework.BridgeAdapter.$stamp"
