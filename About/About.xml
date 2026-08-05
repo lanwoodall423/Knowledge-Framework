@@ -3,11 +3,13 @@
   <name>Knowledge Framework</name>
   <author>Lan</author>
   <packageId>lan.knowledgeframework</packageId>
+  <modVersion>3.0.0-beta.1</modVersion>
   <modClass>KnowledgeFramework.KnowledgeFrameworkMod</modClass>
+  <url>https://github.com/lanwoodall423/Knowledge-Framework</url>
   <supportedVersions><li>1.6</li></supportedVersions>
   <modDependencies>
     <li><packageId>brrainz.harmony</packageId><displayName>Harmony</displayName><steamWorkshopUrl>steam://url/CommunityFilePage/2009463077</steamWorkshopUrl></li>
   </modDependencies>
   <loadAfter><li>brrainz.harmony</li></loadAfter>
-  <description>A general-purpose epistemic gameplay framework. Consumer mods turn observations into personal knowledge, confidence, discovery, expertise, familiarity, documented colony knowledge, insights, and informed decisions without tick polling.</description>
+  <description>A general-purpose epistemic gameplay framework for RimWorld 1.6. Consumer mods turn observations into personal knowledge, confidence, discovery, expertise, familiarity, documented colony knowledge, insights, and informed decisions without tick polling. Source and integration documentation: https://github.com/lanwoodall423/Knowledge-Framework</description>
 </ModMetaData>

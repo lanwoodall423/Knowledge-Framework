@@ -1,16 +1,37 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Library</OutputType><TargetFramework>net472</TargetFramework><RootNamespace>KnowledgeFramework</RootNamespace><AssemblyName>KnowledgeFramework</AssemblyName><LangVersion>latest</LangVersion><Deterministic>true</Deterministic><AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath><GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <OutputType>Library</OutputType><TargetFramework>net472</TargetFramework><RootNamespace>KnowledgeFramework</RootNamespace><AssemblyName>KnowledgeFramework</AssemblyName><LangVersion>latest</LangVersion><Deterministic>true</Deterministic><AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath><GenerateAssemblyInfo>true</GenerateAssemblyInfo><DebugSymbols>false</DebugSymbols><DebugType>none</DebugType><Description>General-purpose epistemic gameplay framework for RimWorld.</Description>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RimWorldManagedPath)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_PATH)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_ASSEMBLIES)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkHarmonyPath Condition="'$(KnowledgeFrameworkHarmonyPath)' == ''">$(HarmonyPath)</KnowledgeFrameworkHarmonyPath>
+    <KnowledgeFrameworkHarmonyPath Condition="'$(KnowledgeFrameworkHarmonyPath)' == ''">$(RIMWORLD_HARMONY_PATH)</KnowledgeFrameworkHarmonyPath>
+    <KnowledgeFrameworkHarmonyAssemblyPath Condition="'$(KnowledgeFrameworkHarmonyAssemblyPath)' == ''">$(HarmonyAssemblyPath)</KnowledgeFrameworkHarmonyAssemblyPath>
+    <KnowledgeFrameworkHarmonyAssemblyPath Condition="'$(KnowledgeFrameworkHarmonyAssemblyPath)' == ''">$(RIMWORLD_HARMONY_ASSEMBLY)</KnowledgeFrameworkHarmonyAssemblyPath>
+    <KnowledgeFrameworkHarmonyAssemblyPath Condition="'$(KnowledgeFrameworkHarmonyAssemblyPath)' == '' and '$(KnowledgeFrameworkHarmonyPath)' != ''">$([System.IO.Path]::Combine('$(KnowledgeFrameworkHarmonyPath)', '0Harmony.dll'))</KnowledgeFrameworkHarmonyAssemblyPath>
+    <KnowledgeFrameworkAssemblyCSharpPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'Assembly-CSharp.dll'))</KnowledgeFrameworkAssemblyCSharpPath>
+    <KnowledgeFrameworkUnityCorePath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityEngine.CoreModule.dll'))</KnowledgeFrameworkUnityCorePath>
+    <KnowledgeFrameworkUnityGuiPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityEngine.IMGUIModule.dll'))</KnowledgeFrameworkUnityGuiPath>
+    <KnowledgeFrameworkUnityTextPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityEngine.TextRenderingModule.dll'))</KnowledgeFrameworkUnityTextPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
-    <Optimize>true</Optimize><OutputPath>..\1.6\Assemblies\</OutputPath><DebugType>none</DebugType>
+    <Optimize>true</Optimize><OutputPath>$(MSBuildThisFileDirectory)../1.6/Assemblies/</OutputPath><DebugType>none</DebugType><DebugSymbols>false</DebugSymbols>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Assembly-CSharp"><HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="UnityEngine.CoreModule"><HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="UnityEngine.IMGUIModule"><HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.IMGUIModule.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.TextRenderingModule.dll</HintPath><Private>false</Private></Reference>
-    <Reference Include="0Harmony"><HintPath>C:\Games\Steam\steamapps\workshop\content\294100\2009463077\Current\Assemblies\0Harmony.dll</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(KnowledgeFrameworkAssemblyCSharpPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(KnowledgeFrameworkUnityCorePath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(KnowledgeFrameworkUnityGuiPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(KnowledgeFrameworkUnityTextPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="0Harmony"><HintPath>$(KnowledgeFrameworkHarmonyAssemblyPath)</HintPath><Private>false</Private></Reference>
   </ItemGroup>
+  <Target Name="ValidateKnowledgeFrameworkDependencies" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''" Text="Knowledge Framework build blocked: set KnowledgeFrameworkRimWorldManagedPath or RIMWORLD_MANAGED_PATH to a local RimWorld Managed directory." />
+    <Error Condition="'$(KnowledgeFrameworkHarmonyAssemblyPath)' == ''" Text="Knowledge Framework build blocked: set KnowledgeFrameworkHarmonyAssemblyPath or RIMWORLD_HARMONY_ASSEMBLY, or set KnowledgeFrameworkHarmonyPath/RIMWORLD_HARMONY_PATH to a directory containing 0Harmony.dll." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkAssemblyCSharpPath)')" Text="Knowledge Framework build blocked: missing Assembly-CSharp.dll at '$(KnowledgeFrameworkAssemblyCSharpPath)'. Supply a legitimate local RimWorld Managed directory; no assemblies are downloaded." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkUnityCorePath)')" Text="Knowledge Framework build blocked: missing UnityEngine.CoreModule.dll at '$(KnowledgeFrameworkUnityCorePath)'. Supply a legitimate local RimWorld Managed directory." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkUnityGuiPath)')" Text="Knowledge Framework build blocked: missing UnityEngine.IMGUIModule.dll at '$(KnowledgeFrameworkUnityGuiPath)'. Supply a legitimate local RimWorld Managed directory." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkUnityTextPath)')" Text="Knowledge Framework build blocked: missing UnityEngine.TextRenderingModule.dll at '$(KnowledgeFrameworkUnityTextPath)'. Supply a legitimate local RimWorld Managed directory." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkHarmonyAssemblyPath)')" Text="Knowledge Framework build blocked: missing 0Harmony.dll at '$(KnowledgeFrameworkHarmonyAssemblyPath)'. Supply a legitimate local Harmony assembly; no assembly is downloaded." />
+  </Target>
 </Project>

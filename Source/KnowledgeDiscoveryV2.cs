@@ -42,6 +42,8 @@ namespace KnowledgeFramework
             KnowledgeScope scope = KnowledgeScope.Personal, KnowledgeContextKey context = default(KnowledgeContextKey),
             KnowledgeContextFallbackMode fallback = KnowledgeContextFallbackMode.ParentThenGlobal)
         {
+            domainId = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId) ?? subjectId;
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             KnowledgeSubjectSnapshotV2 legacy = KnowledgeQuery.Subject(domainId, subjectId, pawn, scope);
             if (schema == null || context.IsPartial)
@@ -99,11 +101,6 @@ namespace KnowledgeFramework
                 resolvedContext = KnowledgeContextKey.Empty;
                 usedFallback = true;
                 selectedProvenance = KnowledgeStageProvenance.InheritedGlobal;
-            }
-            else if (contextualSelected && selectedContextual && !context.IsEmpty && resolvedContext.IsEmpty)
-            {
-                resolvedContext = context;
-                usedFallback = false;
             }
             return new KnowledgeStageSnapshot(domainId, subjectId, selected, pawn, scope, context,
                 resolvedContext, usedFallback, selectedContextual, selectedProvenance);

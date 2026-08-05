@@ -1,4 +1,9 @@
-# Knowledge Framework V2 Integration
+# Knowledge Framework Integration Compatibility Reference
+
+This historical filename is retained for consumers that bookmarked the V2 guide.
+Use the generation-neutral [INTEGRATION.md](INTEGRATION.md) as the primary guide.
+The V1/V2 compatibility notes below remain applicable; V3 is additive and does not
+remove the older contracts.
 
 The framework is a normal gameplay dependency. RimWorld Dev Bridge is optional and
 must not be added as a gameplay assembly reference.
@@ -257,3 +262,7 @@ actions under the `Knowledge Framework` debug category. `KnowledgeDiagnostics.Sn
 is intentionally cheap and returns meaningful counters only in development mode.
 Capability-aware consumers can inspect `KnowledgeFrameworkApi.ApiVersion` and
 `KnowledgeFrameworkApi.CapabilityVersion(...)` before using optional V3 features.
+
+The framework release version is `3.0.0-beta.1`. Read it from
+`KnowledgeFrameworkApi.ReleaseVersion`; do not compare it to `ApiVersion`.
+`ApiVersion` remains the integer capability-generation contract and is still `3`.

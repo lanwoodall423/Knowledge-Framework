@@ -13,10 +13,12 @@ namespace KnowledgeFramework
         public static KnowledgeMilestoneState State(string domainId, string subjectId, string trackId, string milestoneId,
             Pawn pawn = null, KnowledgeContextKey context = default(KnowledgeContextKey))
         {
+            string canonicalDomain = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            string canonicalSubject = KnowledgeRegistry.ResolveSubjectId(canonicalDomain, subjectId) ?? subjectId;
             KnowledgeMilestoneStateRecord record = GameComponent_KnowledgeFramework.Current?.MilestoneV3(
-                KnowledgeRegistry.ResolveDomainId(domainId), KnowledgeRegistry.ResolveSubjectId(domainId, subjectId), trackId, milestoneId,
+                canonicalDomain, canonicalSubject, trackId, milestoneId,
                 pawn, context, false);
-            return ToState(record, domainId, subjectId, trackId, milestoneId, pawn, context);
+            return ToState(record, canonicalDomain, canonicalSubject, trackId, milestoneId, pawn, context);
         }
 
         public static IReadOnlyList<KnowledgeMilestoneState> States(string domainId, string subjectId, Pawn pawn = null,
@@ -221,11 +223,12 @@ namespace KnowledgeFramework
                 return false;
             }
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
+            if (component == null) return false;
             KnowledgeSubjectRelationTypeDef type = Type(relation.relationTypeId);
             if (type.parentage && WouldCycle(relation)) return false;
             string inverseTypeId = type.inverseTypeId.NullOrEmpty() ? type.StableId : type.inverseTypeId;
             if (addInverse && (type.symmetric || !type.inverseTypeId.NullOrEmpty()) && Type(inverseTypeId) == null) return false;
-            component.AddRelationV3(relation);
+            if (!component.AddRelationV3(relation)) return false;
             if (addInverse && (type.symmetric || !type.inverseTypeId.NullOrEmpty()))
             {
                 KnowledgeSubjectRelation inverse = new KnowledgeSubjectRelation
@@ -244,7 +247,7 @@ namespace KnowledgeFramework
                     tick = relation.tick,
                     metadata = relation.metadata == null ? null : new Dictionary<string, string>(relation.metadata)
                 };
-                component.AddRelationV3(inverse);
+                if (!component.AddRelationV3(inverse)) return false;
             }
             return true;
         }
@@ -257,8 +260,11 @@ namespace KnowledgeFramework
         {
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null) return Array.Empty<KnowledgeSubjectRelation>();
-            return component.RelationRecordsV3(domainId, subjectId).Where(item =>
-                (outgoing && item.fromSubjectId == subjectId || incoming && item.toSubjectId == subjectId) &&
+            string canonicalDomain = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            string canonicalSubject = KnowledgeRegistry.ResolveSubjectId(canonicalDomain, subjectId) ?? subjectId;
+            return component.RelationRecordsV3(canonicalDomain, canonicalSubject).Where(item =>
+                (canonicalSubject.NullOrEmpty() || outgoing && item.domainId == canonicalDomain && item.fromSubjectId == canonicalSubject ||
+                 incoming && item.toDomainId == canonicalDomain && item.toSubjectId == canonicalSubject) &&
                 (context.IsEmpty || item.contextTypeId == context.typeId && item.contextId == context.stableId)).Select(item => item.ToRelation()).ToList();
         }
 
@@ -293,9 +299,18 @@ namespace KnowledgeFramework
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null) return true;
             List<KeyValuePair<string, string>> edges = component.RelationRecordsV3(null).Where(item => Type(item.relationTypeId)?.parentage == true)
-                .Select(item => new KeyValuePair<string, string>(item.domainId + ":" + item.fromSubjectId, item.toDomainId + ":" + item.toSubjectId)).ToList();
-            edges.Add(new KeyValuePair<string, string>(relation.domainId + ":" + relation.fromSubjectId, relation.toDomainId + ":" + relation.toSubjectId));
+                .Select(item => new KeyValuePair<string, string>(RelationNode(item.domainId, item.fromSubjectId),
+                    RelationNode(item.toDomainId, item.toSubjectId))).ToList();
+            edges.Add(new KeyValuePair<string, string>(RelationNode(relation.domainId, relation.fromSubjectId),
+                RelationNode(relation.toDomainId, relation.toSubjectId)));
             return KnowledgeGraphValidation.HasCycle(edges);
+        }
+
+        private static string RelationNode(string domainId, string subjectId)
+        {
+            string canonicalDomain = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            string canonicalSubject = KnowledgeRegistry.ResolveSubjectId(canonicalDomain, subjectId) ?? subjectId;
+            return canonicalDomain + ":" + canonicalSubject;
         }
     }
 

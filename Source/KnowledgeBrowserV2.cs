@@ -79,6 +79,8 @@ namespace KnowledgeFramework
         private Vector2 facetScroll;
         private int modelRevision = -1;
         private int modelKnowledgeRevision = -1;
+        private int modelRegistryRevision = -1;
+        private int modelContextRegistryRevision = -1;
         private int modelPawnId;
         private KnowledgeScope modelScope;
         private KnowledgeContextKey modelContext;
@@ -88,6 +90,8 @@ namespace KnowledgeFramework
         private KnowledgeBrowserRow detailModel;
         private int detailKnowledgeRevision = -1;
         private int detailUiRevision = -1;
+        private int detailRegistryRevision = -1;
+        private int detailContextRegistryRevision = -1;
         private int detailPawnId;
         private KnowledgeScope detailScope;
         private string detailDomain;
@@ -95,6 +99,8 @@ namespace KnowledgeFramework
         private KnowledgeContextKey detailContext;
         private int contextOptionsKnowledgeRevision = -1;
         private int contextOptionsUiRevision = -1;
+        private int contextOptionsRegistryRevision = -1;
+        private int contextOptionsContextRegistryRevision = -1;
         private int contextOptionsPawnId;
         private KnowledgeScope contextOptionsScope;
         private string contextOptionsDomain;
@@ -221,8 +227,11 @@ namespace KnowledgeFramework
             search = Widgets.TextField(new Rect(inner.x, inner.y, inner.width, 30f), search ?? string.Empty);
             int knowledgeRevision = KnowledgeQuery.Revision;
             int uiRevision = KnowledgeUiCache.Revision;
+            int registryRevision = KnowledgeRegistry.Revision;
+            int contextRegistryRevision = KnowledgeContextRegistry.Revision;
             int pawnId = pawn?.thingIDNumber ?? 0;
-            if (modelRevision != uiRevision || modelKnowledgeRevision != knowledgeRevision || modelDomain != schema.id ||
+            if (modelRevision != uiRevision || modelKnowledgeRevision != knowledgeRevision || modelRegistryRevision != registryRevision ||
+                modelContextRegistryRevision != contextRegistryRevision || modelDomain != schema.id ||
                 modelPawnId != pawnId || modelScope != scope || !modelContext.Equals(context))
             {
                 subjects = KnowledgeRegistry.Subjects(schema.id).ToList();
@@ -230,6 +239,8 @@ namespace KnowledgeFramework
                     pawn, scope, context, KnowledgeContextFallbackMode.ParentThenGlobal), StringComparer.Ordinal);
                 modelRevision = uiRevision;
                 modelKnowledgeRevision = knowledgeRevision;
+                modelRegistryRevision = registryRevision;
+                modelContextRegistryRevision = contextRegistryRevision;
                 modelDomain = schema.id;
                 modelPawnId = pawnId;
                 modelScope = scope;
@@ -425,8 +436,11 @@ namespace KnowledgeFramework
         {
             int knowledgeRevision = KnowledgeQuery.Revision;
             int uiRevision = KnowledgeUiCache.Revision;
+            int registryRevision = KnowledgeRegistry.Revision;
+            int contextRegistryRevision = KnowledgeContextRegistry.Revision;
             int pawnId = pawn?.thingIDNumber ?? 0;
             if (detailModel == null || detailKnowledgeRevision != knowledgeRevision || detailUiRevision != uiRevision ||
+                detailRegistryRevision != registryRevision || detailContextRegistryRevision != contextRegistryRevision ||
                 detailPawnId != pawnId || detailScope != scope || detailDomain != schema.id || detailSubject != subjectId ||
                 !detailContext.Equals(context))
             {
@@ -440,6 +454,8 @@ namespace KnowledgeFramework
                 }, subjectId);
                 detailKnowledgeRevision = knowledgeRevision;
                 detailUiRevision = uiRevision;
+                detailRegistryRevision = registryRevision;
+                detailContextRegistryRevision = contextRegistryRevision;
                 detailPawnId = pawnId;
                 detailScope = scope;
                 detailDomain = schema.id;
@@ -453,8 +469,11 @@ namespace KnowledgeFramework
         {
             int knowledgeRevision = KnowledgeQuery.Revision;
             int uiRevision = KnowledgeUiCache.Revision;
+            int registryRevision = KnowledgeRegistry.Revision;
+            int contextRegistryRevision = KnowledgeContextRegistry.Revision;
             int pawnId = pawn?.thingIDNumber ?? 0;
             if (contextOptionsKnowledgeRevision != knowledgeRevision || contextOptionsUiRevision != uiRevision ||
+                contextOptionsRegistryRevision != registryRevision || contextOptionsContextRegistryRevision != contextRegistryRevision ||
                 contextOptionsPawnId != pawnId || contextOptionsScope != scope || contextOptionsDomain != schema.id ||
                 contextOptionsSubject != subjectId || contextOptionsAllowExplicit != allowExplicitContext)
             {
@@ -467,6 +486,8 @@ namespace KnowledgeFramework
                 }, subjectId, allowExplicitContext).ToList();
                 contextOptionsKnowledgeRevision = knowledgeRevision;
                 contextOptionsUiRevision = uiRevision;
+                contextOptionsRegistryRevision = registryRevision;
+                contextOptionsContextRegistryRevision = contextRegistryRevision;
                 contextOptionsPawnId = pawnId;
                 contextOptionsScope = scope;
                 contextOptionsDomain = schema.id;

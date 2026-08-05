@@ -28,11 +28,21 @@ internal static class Program
             }
 
             LoadRequiredAssemblies(managedPath);
+            Assembly targetAssembly = typeof(KnowledgeFrameworkVerification).Assembly;
+            string assemblyPath = GetOption(args, "assembly");
+            if (!string.IsNullOrWhiteSpace(assemblyPath)) targetAssembly = Assembly.LoadFile(Path.GetFullPath(assemblyPath));
+            string baselinePath = GetOption(args, "update-public-api-baseline");
+            if (!string.IsNullOrWhiteSpace(baselinePath))
+            {
+                PublicV3Audit.WriteBaseline(targetAssembly, baselinePath);
+                Console.WriteLine("API baseline=UPDATED path={0}", Path.GetFullPath(baselinePath));
+                return 0;
+            }
             KnowledgeVerificationResult result = KnowledgeFrameworkVerification.RunPureTests();
             PrintResult(result);
             if (!result.Success) return 1;
 
-            bool auditPassed = PublicV3Audit.Run(typeof(KnowledgeFrameworkVerification).Assembly, result);
+            bool auditPassed = PublicV3Audit.Run(targetAssembly, result) && PublicV3Audit.RunRegressionTests();
             Console.WriteLine("layer=pure passed={0} failed={1} skipped={2} unavailable={3}",
                 result.purePassed, result.pureFailed, result.skipped, result.unavailable);
             Console.WriteLine("layer=game-state passed=0 failed=0 skipped=0 unavailable=1 reason=active GameComponent and map required");

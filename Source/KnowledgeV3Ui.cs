@@ -239,14 +239,13 @@ namespace KnowledgeFramework
             if (component != null && !subjectId.NullOrEmpty())
                 persisted.AddRange(component.ContextKeysV3(schema.id, subjectId, pawn, filter.scope == KnowledgeScope.Colony));
             List<KnowledgeContextKey> result = new List<KnowledgeContextKey> { KnowledgeContextKey.Empty };
-            foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.KnownContexts(schema.id, subjectId, pawn, filter.scope))
-                if (filter.developerMode || ContextAuthorized(filter, subjectId, candidate)) result.Add(candidate);
-            foreach (KnowledgeContextKey candidate in persisted)
+            foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.KnownContexts(schema.id, subjectId, pawn,
+                filter.scope, persisted))
                 if (filter.developerMode || ContextAuthorized(filter, subjectId, candidate)) result.Add(candidate);
             if (includeRequestedContext && !filter.context.IsEmpty && !filter.context.IsPartial &&
                 KnowledgeContextRegistry.Type(filter.context.typeId) != null &&
                 (filter.developerMode || ContextAuthorized(filter, subjectId, filter.context))) result.Add(filter.context);
-            return result.Distinct().ToList();
+            return new[] { KnowledgeContextKey.Empty }.Concat(KnowledgeContextRegistry.OrderContexts(result)).ToList();
         }
 
         internal static bool ContextAuthorized(KnowledgeBrowserFilter filter, string subjectId, KnowledgeContextKey context)

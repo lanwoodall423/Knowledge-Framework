@@ -14,11 +14,11 @@ namespace KnowledgeFramework
             KnowledgeScope scope, bool includeDerived, bool includeEvidenceDetails, KnowledgeContextKey context,
             KnowledgeContextFallbackMode fallback)
         {
+            domainId = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId) ?? subjectId;
             if (context.IsPartial)
                 return new KnowledgeFacetSnapshotV2(domainId, subjectId, facetId, scope == KnowledgeScope.Colony ? null : pawn, scope,
                     0f, 0f, 0f, 0f, true, 0, 0, 0, 0, null, null, null, context, false, 0);
-            domainId = KnowledgeRegistry.ResolveDomainId(domainId);
-            subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, subjectId);
             KnowledgeSchema schema = KnowledgeRegistry.Schema(domainId);
             facetId = facetId.NullOrEmpty() ? KnowledgeSchema.DefaultFacetId : facetId;
             if (schema != null && facetId == KnowledgeSchema.DefaultFacetId && schema.Facet(facetId) == null) facetId = schema.facets.FirstOrDefault()?.id;

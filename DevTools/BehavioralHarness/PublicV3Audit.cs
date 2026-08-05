@@ -1,207 +1,309 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Security.Cryptography;
 using System.Text;
 using KnowledgeFramework;
 
 internal static class PublicV3Audit
 {
-    private enum CoverageKind
-    {
-        Behavioral,
-        Structural,
-        Compatibility
-    }
-
-    private sealed class Coverage
-    {
-        internal readonly CoverageKind kind;
-        internal readonly string layer;
-        internal readonly string tests;
-
-        internal Coverage(CoverageKind kind, string layer, string tests)
-        {
-            this.kind = kind;
-            this.layer = layer;
-            this.tests = tests;
-        }
-    }
-
-    // This fingerprint is intentionally checked into the verifier. A new public declaration must
-    // update this manifest and add a named production-path test mapping before the audit passes.
-    private const string ExpectedDeclarationFingerprintHash = "JWuftClJ3oVLp+W8n6PSuLwB2mBVJtevbuEm1+gobaU=";
-
-    private static readonly Dictionary<string, Coverage> TypeCoverage = BuildCoverage();
+    private const string BaselineResourceSuffix = "PublicApiBaseline.txt";
 
     internal static bool Run(Assembly assembly, KnowledgeVerificationResult pureResult)
     {
         bool valid = true;
-        Type[] types = assembly.GetTypes().Where(IsKnowledgeType).OrderBy(type => type.FullName, StringComparer.Ordinal).ToArray();
-        List<string> declarations = new List<string>();
-        Dictionary<string, Type> declaredTypes = new Dictionary<string, Type>(StringComparer.Ordinal);
-        foreach (Type type in types)
+        string[] actual = BuildSignatures(assembly).ToArray();
+        string[] baseline = ReadBaseline();
+        if (baseline.Length == 0)
         {
-            FieldInfo[] fields = type.IsEnum
-                ? type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                : type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly);
-            PropertyInfo[] properties = type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                .Where(property => property.GetMethod != null).ToArray();
-            if (!type.IsEnum && fields.Length == 0 && properties.Length == 0) continue;
-            declaredTypes[type.Name] = type;
-            Coverage coverage;
-            if (!TypeCoverage.TryGetValue(type.Name, out coverage))
-            {
-                valid = false;
-                Console.Error.WriteLine("AUDIT FAIL declaration-type={0} expected=manifest classification actual=unmapped", type.Name);
-                continue;
-            }
-
-            foreach (FieldInfo field in fields)
-            {
-                bool obsolete = field.GetCustomAttributes(typeof(ObsoleteAttribute), false).Length != 0;
-                string declaration = type.Name + "." + field.Name;
-                declarations.Add(declaration + (obsolete ? "#obsolete" : "#active"));
-                if (obsolete)
-                    Console.WriteLine("AUDIT declaration={0} status=obsolete-rejected mapping=validation-diagnostic layer=production-validation", declaration);
-                else
-                    PrintActive(declaration, coverage);
-            }
-            foreach (PropertyInfo property in properties)
-            {
-                bool obsolete = property.GetCustomAttributes(typeof(ObsoleteAttribute), false).Length != 0;
-                string declaration = type.Name + "." + property.Name;
-                declarations.Add(declaration + (obsolete ? "#obsolete" : "#active"));
-                if (obsolete)
-                    Console.WriteLine("AUDIT declaration={0} status=obsolete-rejected mapping=validation-diagnostic layer=production-validation", declaration);
-                else
-                    PrintActive(declaration, coverage);
-            }
+            Console.Error.WriteLine("API FAIL baseline expected=embedded human-readable public API baseline actual=missing");
+            return false;
         }
 
-        string fingerprint = string.Join("|", declarations.OrderBy(value => value, StringComparer.Ordinal));
-        string fingerprintHash = Convert.ToBase64String(SHA256.Create().ComputeHash(Encoding.UTF8.GetBytes(fingerprint)));
-        if (string.IsNullOrEmpty(ExpectedDeclarationFingerprintHash))
+        string expectedRelease = baseline.FirstOrDefault(line => line.StartsWith("# release=", StringComparison.Ordinal))?.Substring(10);
+        string actualRelease = AssemblyReleaseVersion(assembly);
+        if (!string.Equals(expectedRelease, actualRelease, StringComparison.Ordinal))
         {
             valid = false;
-            Console.Error.WriteLine("AUDIT FAIL declaration-fingerprint expected=checked-in manifest actualHash={0}", fingerprintHash);
-        }
-        else if (!string.Equals(ExpectedDeclarationFingerprintHash, fingerprintHash, StringComparison.Ordinal))
-        {
-            valid = false;
-            Console.Error.WriteLine("AUDIT FAIL declaration-fingerprint changed expectedHash={0} actualHash={1}",
-                ExpectedDeclarationFingerprintHash, fingerprintHash);
+            Console.Error.WriteLine("API FAIL release expected={0} actual={1}", expectedRelease ?? "missing", actualRelease ?? "missing");
         }
 
-        int active = declarations.Count(value => value.EndsWith("#active", StringComparison.Ordinal));
-        int obsoleteCount = declarations.Count(value => value.EndsWith("#obsolete", StringComparison.Ordinal));
-        int structural = 0;
-        int compatibility = 0;
-        foreach (Type type in declaredTypes.Values)
-        {
-            Coverage typeCoverage;
-            if (!TypeCoverage.TryGetValue(type.Name, out typeCoverage)) continue;
-            int memberCount = type.GetFields(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly).Length +
-                type.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
-                    .Count(property => property.GetMethod != null);
-            if (typeCoverage.kind == CoverageKind.Structural) structural += memberCount;
-            if (typeCoverage.kind == CoverageKind.Compatibility) compatibility += memberCount;
-        }
-        int behavioral = Math.Max(0, active - structural - compatibility);
-        Console.WriteLine("AUDIT summary active={0} behavioral={1} structural={2} compatibility={3} obsolete={4} manifest={5}",
-            active, behavioral, structural, compatibility, obsoleteCount, valid ? "PASS" : "FAIL");
+        string[] expectedDeclarations = baseline.Where(IsDeclaration).ToArray();
+        valid &= CompareDeclarationSets(expectedDeclarations, actual, true);
+        Console.WriteLine("API summary types={0} declarations={1} release={2} baseline={3}",
+            actual.Count(line => line.StartsWith("TYPE|", StringComparison.Ordinal)), actual.Length,
+            actualRelease ?? "missing", valid ? "PASS" : "FAIL");
         return valid;
     }
 
-    private static bool IsKnowledgeType(Type type)
+    internal static bool RunRegressionTests()
     {
-        return type.IsPublic && type.Namespace == "KnowledgeFramework" && type.Name.StartsWith("Knowledge", StringComparison.Ordinal);
+        string[] baseline =
+        {
+            "TYPE|KnowledgeFramework.IProvider|kind=interface|visibility=public|base=|interfaces=|generic=",
+            "METHOD|KnowledgeFramework.IProvider|Read|visibility=public|modifiers=abstract|generic=|return=System.String|params=",
+            "FIELD|KnowledgeFramework.Options|Count|visibility=public|modifiers=|type=System.Int32",
+            "METHOD|KnowledgeFramework.Options|Run|visibility=public|modifiers=static|generic=|return=System.Boolean|params=",
+            "ENUM|KnowledgeFramework.Mode|Fast|value=1",
+            "TYPE|KnowledgeFramework.Options|kind=class|visibility=public|base=System.Object|interfaces=|generic="
+        };
+        bool valid = true;
+        valid &= MutationDetected("field-type", baseline, "FIELD|KnowledgeFramework.Options|Count|visibility=public|modifiers=|type=System.Int64");
+        valid &= MutationDetected("method-signature", baseline, "METHOD|KnowledgeFramework.Options|Run|visibility=public|modifiers=static|generic=|return=System.Int32|params=");
+        valid &= MutationDetected("enum-value", baseline, "ENUM|KnowledgeFramework.Mode|Fast|value=2");
+        valid &= MutationDetected("visibility", baseline, "TYPE|KnowledgeFramework.Options|kind=class|visibility=internal|base=System.Object|interfaces=|generic=");
+        valid &= MutationDetected("interface-signature", baseline, "METHOD|KnowledgeFramework.IProvider|Read|visibility=public|modifiers=abstract|generic=|return=System.Int32|params=");
+        Console.WriteLine("API regression tests={0}", valid ? "PASS" : "FAIL");
+        return valid;
     }
 
-    private static void PrintActive(string declaration, Coverage coverage)
+    internal static void WriteBaseline(Assembly assembly, string path)
     {
-        string status = coverage.kind == CoverageKind.Behavioral ? "supported-behavioral" :
-            coverage.kind == CoverageKind.Structural ? "structural-data-only" : "compatibility-only";
-        Console.WriteLine("AUDIT declaration={0} status={1} layer={2} tests={3}", declaration, status, coverage.layer, coverage.tests);
+        if (string.IsNullOrWhiteSpace(path)) throw new ArgumentException("Baseline path is required.", nameof(path));
+        string fullPath = Path.GetFullPath(path);
+        string directory = Path.GetDirectoryName(fullPath);
+        if (!string.IsNullOrEmpty(directory)) Directory.CreateDirectory(directory);
+        List<string> lines = new List<string>
+        {
+            "# Knowledge Framework public API baseline",
+            "# format=1",
+            "# release=" + (AssemblyReleaseVersion(assembly) ?? string.Empty),
+            "# Additive or incompatible changes require an intentional baseline update.",
+            string.Empty
+        };
+        lines.AddRange(BuildSignatures(assembly).OrderBy(line => line, StringComparer.Ordinal));
+        File.WriteAllText(fullPath, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(false));
     }
 
-    private static Dictionary<string, Coverage> BuildCoverage()
+    private static bool MutationDetected(string name, IEnumerable<string> baseline, string replacement)
     {
-        Dictionary<string, Coverage> result = new Dictionary<string, Coverage>(StringComparer.Ordinal);
-        Add(result, CoverageKind.Behavioral, "pure", "claim aggregation/value tests; context-chain tests", 
-            "KnowledgeClaimValue", "KnowledgeNumericRange", "KnowledgeContextKey", "KnowledgeStageSnapshot", "KnowledgeVerificationResult");
-        Add(result, CoverageKind.Behavioral, "pure+game", "requirements, aggregation, fallback, and validation tests",
-            "KnowledgeRequirement", "KnowledgeRequirementGroup", "KnowledgeStageDef", "KnowledgeFacetDef", "KnowledgeObservationDef",
-            "KnowledgeClaimDef", "KnowledgeContextTypeDef", "KnowledgeAccrualPolicy", "KnowledgeWitnessDistribution");
-        Add(result, CoverageKind.Behavioral, "game", "domain registration, lifecycle, observation, transmission, progression, and cleanup tests",
-            "KnowledgeDomainDef", "KnowledgeDomainRegistration", "KnowledgeSubjectDef", "KnowledgeSubjectRegistration", "KnowledgeRegistrationOptions",
-            "KnowledgeRevealDef", "KnowledgeEffectDef", "KnowledgeInsightRequirement", "KnowledgeInsightOutcome", "KnowledgeInsightDef",
-            "KnowledgeRelationshipDef", "KnowledgeTransmissionDef", "KnowledgeSubjectArchetypeDef", "KnowledgeExpertiseTrackDef",
-            "KnowledgeExpertiseOutcome", "KnowledgeObservationOutcome", "KnowledgeMeasurement", "KnowledgeMilestoneTrackDef",
-            "KnowledgeMilestoneDef", "KnowledgeSubjectRelationTypeDef", "KnowledgeExpertiseNamespaceDef", "KnowledgeTransmissionRequest",
-             "KnowledgeObservation", "KnowledgeTransaction", "KnowledgeBrowserFilter", "KnowledgeFrameworkSettings");
-        Add(result, CoverageKind.Behavioral, "game", "browser context, visibility, fallback, and cache invalidation tests",
-            "KnowledgeV3Ui");
-        Add(result, CoverageKind.Behavioral, "pure+game", "validation, diagnostics, and unsupported-option rejection tests",
-            "KnowledgeDiagnostics", "KnowledgeRegistry");
-        Add(result, CoverageKind.Behavioral, "game", "domain registration, aliases, provider registration, and cleanup tests",
-            "KnowledgeDomainRegistry", "KnowledgeFrameworkApi");
-        Add(result, CoverageKind.Behavioral, "pure+game", "global/contextual query and compatibility query tests",
-            "KnowledgeQuery");
-        Add(result, CoverageKind.Compatibility, "pure+game", "rank and V1/V2 compatibility tests",
-            "KnowledgeRankThresholds");
-        Add(result, CoverageKind.Structural, "pure+game+save", "schema construction, query snapshots, persistence normalization, and index reconstruction tests",
-            "KnowledgeFacetSchema", "KnowledgeStageSchema", "KnowledgeExpertiseTrackSchema", "KnowledgeSubjectSnapshot", "KnowledgeSchema",
-            "KnowledgeClaimMeasurementSnapshot", "KnowledgeClaimSnapshot", "KnowledgeClaimChangedEvent", "KnowledgeSubjectUpdate",
-            "KnowledgeSubjectRelation", "KnowledgeMilestoneState", "KnowledgeMilestoneChangedEvent", "KnowledgeMilestoneConditionSample",
-            "KnowledgeSharedExpertiseSnapshot", "KnowledgeSharedExpertiseContribution", "KnowledgeComparisonRow", "KnowledgeComparisonSchema",
-            "KnowledgeStructuredComparisonSnapshot", "KnowledgeFacetSnapshotV2", "KnowledgeEvidenceAggregateSnapshot", "KnowledgeProvenanceSnapshot",
-            "KnowledgeSubjectSnapshotV2", "KnowledgeExpertiseSnapshotV2", "KnowledgeRelationshipSnapshot", "KnowledgeFacetComparison",
-            "KnowledgeComparisonSnapshot", "KnowledgeChange", "KnowledgeTransactionResult", "KnowledgeBatchChangedEvent", "KnowledgeInsightContext",
-            "KnowledgeInsightProgress", "KnowledgeEffectQuery", "KnowledgeEffectResult", "KnowledgeEffectAccumulator", "KnowledgeRevealResult",
-            "KnowledgeDiagnosticsSnapshot", "KnowledgeMenuState", "KnowledgeMenuRow", "KnowledgeMenuSection", "KnowledgeMenuModel",
-             "KnowledgeBrowserRow", "KnowledgeFrameworkMod", "KnowledgeConsumerMigration");
-        Add(result, CoverageKind.Structural, "pure+game", "validation diagnostics and developer verification reporting tests",
-            "KnowledgeValidationIssue");
-        Add(result, CoverageKind.Compatibility, "pure+game", "V1/V2 compatibility and legacy save regression tests",
-            "KnowledgeDomainDefinition", "KnowledgeSubjectDefinition", "KnowledgeRecord", "KnowledgeEntry", "KnowledgeSnapshot",
-            "KnowledgeAward", "KnowledgeChangedEvent", "KnowledgeEffectContext", "KnowledgeKnowledgeRecord");
-        AddEnum(result, "KnowledgeScope", "global/colony claim and stage tests");
-        AddEnum(result, "KnowledgeSharingModel", "sharing/transmission tests");
-        AddEnum(result, "KnowledgeStageAggregationMode", "LegacySumMax compatibility; balanced aggregation tests");
-        AddEnum(result, "KnowledgeEvidenceDisposition", "supporting/neutral/contradictory claim tests");
-        AddEnum(result, "KnowledgeEffectComposition", "V2 effect composition tests");
-        AddEnum(result, "KnowledgeInsightScope", "insight scope tests");
-        AddEnum(result, "KnowledgeRequirementKind", "requirement evaluation and obsolete-kind rejection tests");
-        AddEnum(result, "KnowledgeRegistrationConflict", "registration priority/conflict tests");
-        AddEnum(result, "KnowledgeClaimValueType", "typed claim value tests");
-        AddEnum(result, "KnowledgeClaimAggregation", "claim aggregation tests");
-        AddEnum(result, "KnowledgeClaimStalenessPolicy", "claim staleness production-path tests");
-        AddEnum(result, "KnowledgeContextFallbackMode", "exact/parent/global context fallback tests");
-        AddEnum(result, "KnowledgeRequirementGroupMode", "requirement group shape/evaluation tests");
-        AddEnum(result, "KnowledgeRequirementComparison", "requirement comparison tests");
-        AddEnum(result, "KnowledgeSubjectState", "lifecycle visibility tests");
-        AddEnum(result, "KnowledgeWitnessDistributionPolicy", "witness distribution and obsolete-policy rejection tests");
-        AddEnum(result, "KnowledgeMilestonePauseBehavior", "milestone pause/reset tests");
-        AddEnum(result, "KnowledgeMilestoneResetBehavior", "milestone reset tests");
-        AddEnum(result, "KnowledgeComparisonRowKind", "comparison row tests and obsolete-row rejection tests");
-        AddEnum(result, "KnowledgeMilestoneEventKind", "milestone event tests");
-        AddEnum(result, "KnowledgeStageProvenance", "stage provenance tests");
-        AddEnum(result, "KnowledgeTransmissionKind", "transmission tests");
-        AddEnum(result, "KnowledgeRank", "rank transition tests");
-        AddEnum(result, "KnowledgeMenuScope", "menu scope tests");
-        AddEnum(result, "KnowledgeBrowserSort", "browser sorting tests");
+        string[] expected = baseline.ToArray();
+        string old = expected.First(line => line.StartsWith(replacement.Substring(0, replacement.IndexOf('|', replacement.IndexOf('|') + 1) + 1), StringComparison.Ordinal));
+        string[] mutated = expected.Select(line => line == old ? replacement : line).ToArray();
+        bool detected = !CompareDeclarationSets(expected, mutated, false);
+        Console.WriteLine("API regression {0}={1}", name, detected ? "PASS" : "FAIL");
+        return detected;
+    }
+
+    private static bool CompareDeclarationSets(IEnumerable<string> expected, IEnumerable<string> actual, bool diagnostics)
+    {
+        HashSet<string> expectedSet = new HashSet<string>(expected.Where(IsDeclaration), StringComparer.Ordinal);
+        HashSet<string> actualSet = new HashSet<string>(actual.Where(IsDeclaration), StringComparer.Ordinal);
+        string[] removed = expectedSet.Except(actualSet, StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray();
+        string[] added = actualSet.Except(expectedSet, StringComparer.Ordinal).OrderBy(value => value, StringComparer.Ordinal).ToArray();
+        if (diagnostics)
+        {
+            foreach (string declaration in removed) Console.Error.WriteLine("API FAIL removed={0}", declaration);
+            foreach (string declaration in added) Console.Error.WriteLine("API FAIL added={0}", declaration);
+        }
+        return removed.Length == 0 && added.Length == 0;
+    }
+
+    private static string[] ReadBaseline()
+    {
+        string resourceName = typeof(PublicV3Audit).Assembly.GetManifestResourceNames()
+            .FirstOrDefault(name => name.EndsWith(BaselineResourceSuffix, StringComparison.Ordinal));
+        if (resourceName == null) return new string[0];
+        using (Stream stream = typeof(PublicV3Audit).Assembly.GetManifestResourceStream(resourceName))
+        using (StreamReader reader = new StreamReader(stream))
+            return reader.ReadToEnd().Split(new[] { "\r\n", "\n" }, StringSplitOptions.None);
+    }
+
+    private static bool IsDeclaration(string line) => line.StartsWith("TYPE|", StringComparison.Ordinal) ||
+        line.StartsWith("CTOR|", StringComparison.Ordinal) || line.StartsWith("METHOD|", StringComparison.Ordinal) ||
+        line.StartsWith("FIELD|", StringComparison.Ordinal) || line.StartsWith("PROPERTY|", StringComparison.Ordinal) ||
+        line.StartsWith("EVENT|", StringComparison.Ordinal) || line.StartsWith("ENUM|", StringComparison.Ordinal) ||
+        line.StartsWith("DELEGATE|", StringComparison.Ordinal);
+
+    private static List<string> BuildSignatures(Assembly assembly)
+    {
+        List<string> result = new List<string>();
+        Type[] types = assembly.GetTypes().Where(IsPublicApiType)
+            .OrderBy(TypeName, StringComparer.Ordinal).ToArray();
+        foreach (Type type in types)
+        {
+            result.Add(TypeSignature(type));
+            if (type.IsEnum)
+            {
+                foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                    .OrderBy(field => field.Name, StringComparer.Ordinal))
+                    result.Add("ENUM|" + TypeName(type) + "|" + field.Name + "|value=" + Convert.ToString(field.GetRawConstantValue(), CultureInfo.InvariantCulture) + ObsoleteSuffix(field));
+                continue;
+            }
+            if (IsDelegate(type))
+            {
+                MethodInfo invoke = type.GetMethod("Invoke", BindingFlags.Public | BindingFlags.Instance);
+                result.Add("DELEGATE|" + TypeName(type) + "|return=" + FormatType(invoke?.ReturnType) + "|params=" + FormatParameters(invoke?.GetParameters()) + ObsoleteSuffix(type));
+                continue;
+            }
+
+            foreach (ConstructorInfo constructor in type.GetConstructors(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(IsContractMember).OrderBy(Signature, StringComparer.Ordinal))
+                result.Add("CTOR|" + TypeName(type) + "|visibility=" + Visibility(constructor) + "|modifiers=" + MethodModifiers(constructor) + "|params=" + FormatParameters(constructor.GetParameters()) + ObsoleteSuffix(constructor));
+            foreach (FieldInfo field in type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(IsContractMember).OrderBy(field => field.Name, StringComparer.Ordinal))
+                result.Add("FIELD|" + TypeName(type) + "|" + field.Name + "|visibility=" + Visibility(field) + "|modifiers=" + FieldModifiers(field) + "|type=" + FormatType(field.FieldType) + "|constant=" + FieldConstant(field) + ObsoleteSuffix(field));
+            foreach (PropertyInfo property in type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(IsContractProperty).OrderBy(property => property.Name, StringComparer.Ordinal))
+                result.Add("PROPERTY|" + TypeName(type) + "|" + property.Name + "|type=" + FormatType(property.PropertyType) + "|index=" + FormatParameters(property.GetIndexParameters()) +
+                    "|get=" + AccessorVisibility(property.GetMethod) + "|set=" + AccessorVisibility(property.SetMethod) + ObsoleteSuffix(property));
+            foreach (EventInfo @event in type.GetEvents(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(IsContractEvent).OrderBy(@event => @event.Name, StringComparer.Ordinal))
+                result.Add("EVENT|" + TypeName(type) + "|" + @event.Name + "|type=" + FormatType(@event.EventHandlerType) +
+                    "|add=" + AccessorVisibility(@event.AddMethod) + "|remove=" + AccessorVisibility(@event.RemoveMethod) + ObsoleteSuffix(@event));
+            foreach (MethodInfo method in type.GetMethods(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)
+                .Where(method => IsContractMember(method) && !method.IsSpecialName).OrderBy(Signature, StringComparer.Ordinal))
+                result.Add("METHOD|" + TypeName(type) + "|" + method.Name + "|visibility=" + Visibility(method) + "|modifiers=" + MethodModifiers(method) +
+                    "|generic=" + GenericParameters(method.GetGenericArguments()) + "|return=" + FormatType(method.ReturnType) + "|params=" + FormatParameters(method.GetParameters()) + ObsoleteSuffix(method));
+        }
         return result;
     }
 
-    private static void Add(Dictionary<string, Coverage> result, CoverageKind kind, string layer, string tests, params string[] names)
+    private static string TypeSignature(Type type) => "TYPE|" + TypeName(type) + "|kind=" + TypeKind(type) + "|visibility=" + Visibility(type) + "|modifiers=" + TypeModifiers(type) +
+        "|base=" + FormatType(type.BaseType) + "|interfaces=" + string.Join(",", type.GetInterfaces().Select(FormatType).OrderBy(value => value, StringComparer.Ordinal)) +
+        "|enumUnderlying=" + (type.IsEnum ? FormatType(Enum.GetUnderlyingType(type)) : string.Empty) +
+        "|generic=" + GenericParameters(type.IsGenericTypeDefinition ? type.GetGenericArguments() : new Type[0]) + ObsoleteSuffix(type);
+
+    private static bool IsPublicApiType(Type type)
     {
-        foreach (string name in names) result[name] = new Coverage(kind, layer, tests);
+        return type.IsPublic || type.IsNestedPublic || type.IsNestedFamily || type.IsNestedFamORAssem;
     }
 
-    private static void AddEnum(Dictionary<string, Coverage> result, string name, string tests)
+    private static bool IsDelegate(Type type) => typeof(MulticastDelegate).IsAssignableFrom(type.BaseType);
+
+    private static string TypeKind(Type type) => type.IsEnum ? "enum" : IsDelegate(type) ? "delegate" : type.IsInterface ? "interface" :
+        type.IsValueType ? "struct" : "class";
+
+    private static string TypeName(Type type)
     {
-        result[name] = new Coverage(CoverageKind.Behavioral, "pure+game", tests);
+        if (type == null) return string.Empty;
+        if (type.IsByRef) return FormatType(type.GetElementType()) + "&";
+        if (type.IsArray) return FormatType(type.GetElementType()) + "[" + new string(',', type.GetArrayRank() - 1) + "]";
+        if (type.IsGenericParameter) return "`" + type.Name;
+        if (type.IsGenericType)
+        {
+            string name = type.GetGenericTypeDefinition().FullName ?? type.Name;
+            int tick = name.IndexOf('`');
+            if (tick >= 0) name = name.Substring(0, tick);
+            return name + "<" + string.Join(",", type.GetGenericArguments().Select(FormatType)) + ">";
+        }
+        return type.FullName ?? type.Name;
+    }
+
+    private static string FormatType(Type type) => TypeName(type);
+
+    private static string GenericParameters(Type[] parameters)
+    {
+        return string.Join(";", (parameters ?? new Type[0]).Select(parameter => parameter.Name + ":" + GenericConstraints(parameter)));
+    }
+
+    private static string GenericConstraints(Type parameter)
+    {
+        List<string> constraints = new List<string>();
+        GenericParameterAttributes attributes = parameter.GenericParameterAttributes;
+        if ((attributes & GenericParameterAttributes.ReferenceTypeConstraint) != 0) constraints.Add("class");
+        if ((attributes & GenericParameterAttributes.NotNullableValueTypeConstraint) != 0) constraints.Add("struct");
+        if ((attributes & GenericParameterAttributes.DefaultConstructorConstraint) != 0) constraints.Add("new()");
+        constraints.AddRange(parameter.GetGenericParameterConstraints().Select(FormatType).OrderBy(value => value, StringComparer.Ordinal));
+        return string.Join(",", constraints);
+    }
+
+    private static string FormatParameters(IEnumerable<ParameterInfo> parameters)
+    {
+        return string.Join(";", (parameters ?? Enumerable.Empty<ParameterInfo>()).Select(parameter =>
+            (parameter.IsOut ? "out " : parameter.ParameterType.IsByRef ? (parameter.IsIn ? "in " : "ref ") : "") +
+            FormatType(parameter.ParameterType.IsByRef ? parameter.ParameterType.GetElementType() : parameter.ParameterType) + " " + parameter.Name +
+            (parameter.GetCustomAttributes(typeof(ParamArrayAttribute), false).Length != 0 ? " params" : "") +
+            (parameter.IsOptional ? " optional=" + DefaultValue(parameter) : "")));
+    }
+
+    private static string DefaultValue(ParameterInfo parameter)
+    {
+        if (!parameter.HasDefaultValue) return "<missing>";
+        object value = parameter.DefaultValue;
+        if (value == null) return "null";
+        if (value is string) return "\"" + Escape(value.ToString()) + "\"";
+        if (value is Type) return "typeof(" + FormatType((Type)value) + ")";
+        return Escape(Convert.ToString(value, CultureInfo.InvariantCulture));
+    }
+
+    private static string Visibility(Type type) => type.IsNested ?
+        (type.IsNestedPublic ? "public" : type.IsNestedFamily ? "protected" : type.IsNestedFamORAssem ? "protected-internal" : type.IsNestedPrivate ? "private" : "internal") :
+        (type.IsPublic ? "public" : "internal");
+
+    private static string Visibility(MethodBase method) => method.IsPublic ? "public" : method.IsFamily ? "protected" : method.IsFamilyOrAssembly ? "protected-internal" : method.IsPrivate ? "private" : "internal";
+    private static string Visibility(FieldInfo field) => field.IsPublic ? "public" : field.IsFamily ? "protected" : field.IsFamilyOrAssembly ? "protected-internal" : field.IsPrivate ? "private" : "internal";
+    private static string AccessorVisibility(MethodInfo method) => method == null ? "none" : Visibility(method);
+
+    private static string TypeModifiers(Type type)
+    {
+        List<string> modifiers = new List<string>();
+        if (type.IsAbstract && type.IsSealed) modifiers.Add("static");
+        else
+        {
+            if (type.IsAbstract) modifiers.Add("abstract");
+            if (type.IsSealed) modifiers.Add("sealed");
+        }
+        return string.Join(",", modifiers);
+    }
+
+    private static string MethodModifiers(MethodBase method)
+    {
+        MethodInfo info = method as MethodInfo;
+        List<string> modifiers = new List<string>();
+        if (method.IsStatic) modifiers.Add("static");
+        if (info != null && info.IsAbstract) modifiers.Add("abstract");
+        if (info != null && info.GetBaseDefinition() != info) modifiers.Add("override");
+        else if (info != null && info.IsVirtual) modifiers.Add("virtual");
+        if (info != null && info.IsFinal && info.IsVirtual) modifiers.Add("sealed");
+        return string.Join(",", modifiers);
+    }
+
+    private static string FieldModifiers(FieldInfo field)
+    {
+        List<string> modifiers = new List<string>();
+        if (field.IsStatic) modifiers.Add("static");
+        if (field.IsLiteral) modifiers.Add("const");
+        else if (field.IsInitOnly) modifiers.Add("readonly");
+        return string.Join(",", modifiers);
+    }
+
+    private static string FieldConstant(FieldInfo field)
+    {
+        if (!field.IsLiteral) return "<none>";
+        object value = field.GetRawConstantValue();
+        return value == null ? "null" : Escape(Convert.ToString(value, CultureInfo.InvariantCulture));
+    }
+
+    private static bool IsContractMember(MemberInfo member)
+    {
+        if (member is MethodBase) return IsContractVisibility(((MethodBase)member).Attributes);
+        if (member is FieldInfo) return IsContractVisibility(((FieldInfo)member).Attributes);
+        return false;
+    }
+
+    private static bool IsContractProperty(PropertyInfo property) => IsContractVisibility(property.GetMethod?.Attributes ?? property.SetMethod?.Attributes ?? 0);
+    private static bool IsContractEvent(EventInfo @event) => IsContractVisibility(@event.AddMethod?.Attributes ?? @event.RemoveMethod?.Attributes ?? 0);
+    private static bool IsContractVisibility(MethodAttributes attributes) => (attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Public ||
+        (attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.Family || (attributes & MethodAttributes.MemberAccessMask) == MethodAttributes.FamORAssem;
+    private static bool IsContractVisibility(FieldAttributes attributes) => (attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Public ||
+        (attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.Family || (attributes & FieldAttributes.FieldAccessMask) == FieldAttributes.FamORAssem;
+
+    private static string Signature(MemberInfo member) => member is MethodBase ? member.Name + "|" + FormatParameters(((MethodBase)member).GetParameters()) : member.Name;
+
+    private static string ObsoleteSuffix(MemberInfo member)
+    {
+        ObsoleteAttribute obsolete = member.GetCustomAttributes(typeof(ObsoleteAttribute), false).OfType<ObsoleteAttribute>().FirstOrDefault();
+        return obsolete == null ? string.Empty : "|obsolete=" + Escape(obsolete.Message ?? string.Empty) + ";error=" + obsolete.IsError;
+    }
+
+    private static string Escape(string value) => (value ?? string.Empty).Replace("\\", "\\\\").Replace("|", "\\|").Replace("\r", "\\r").Replace("\n", "\\n");
+
+    private static string AssemblyReleaseVersion(Assembly assembly)
+    {
+        return assembly.GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
+            .OfType<AssemblyInformationalVersionAttribute>().Select(attribute => attribute.InformationalVersion).FirstOrDefault();
     }
 }

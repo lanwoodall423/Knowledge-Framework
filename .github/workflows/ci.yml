@@ -1,0 +1,30 @@
+name: legal-checks
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  static-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Verify package and compatibility contract
+        shell: pwsh
+        run: ./DevTools/Verify-KnowledgeFramework.ps1 -AllowBlockedIntegration
+      - name: Verify isolated reference consumer fixture
+        shell: pwsh
+        run: ./Examples/ReferenceConsumer/Verify-ReferenceConsumer.ps1
+      - name: Verify documentation links
+        shell: pwsh
+        run: ./DevTools/Test-DocumentationLinks.ps1
+      - name: Verify development stress contract
+        shell: pwsh
+        run: ./DevTools/Test-DevelopmentStressContract.ps1
+      - name: Verify clean diff formatting
+        shell: bash
+        run: git diff --check

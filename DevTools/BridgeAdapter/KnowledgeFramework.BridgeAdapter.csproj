@@ -8,7 +8,17 @@
     <LangVersion>latest</LangVersion>
     <Deterministic>true</Deterministic>
     <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
-    <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RimWorldManagedPath)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_PATH)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_ASSEMBLIES)</KnowledgeFrameworkRimWorldManagedPath>
+    <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(KnowledgeFrameworkAssemblyPath)</KnowledgeFrameworkPrimaryAssemblyPath>
+    <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH)</KnowledgeFrameworkPrimaryAssemblyPath>
+    <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(MSBuildThisFileDirectory)../../1.6/Assemblies/KnowledgeFramework.dll</KnowledgeFrameworkPrimaryAssemblyPath>
+    <KnowledgeFrameworkAdapterAssemblyCSharpPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'Assembly-CSharp.dll'))</KnowledgeFrameworkAdapterAssemblyCSharpPath>
+    <KnowledgeFrameworkAdapterUnityCorePath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityEngine.CoreModule.dll'))</KnowledgeFrameworkAdapterUnityCorePath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <Optimize>true</Optimize>
@@ -16,16 +26,22 @@
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="Assembly-CSharp">
-      <HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\Assembly-CSharp.dll</HintPath>
+        <HintPath>$(KnowledgeFrameworkAdapterAssemblyCSharpPath)</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine.CoreModule">
-      <HintPath>C:\Games\Steam\steamapps\common\RimWorld\RimWorldWin64_Data\Managed\UnityEngine.CoreModule.dll</HintPath>
+        <HintPath>$(KnowledgeFrameworkAdapterUnityCorePath)</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="KnowledgeFramework">
-      <HintPath>..\..\1.6\Assemblies\KnowledgeFramework.dll</HintPath>
+      <HintPath>$(KnowledgeFrameworkPrimaryAssemblyPath)</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
+  <Target Name="ValidateKnowledgeFrameworkBridgeDependencies" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''" Text="Bridge adapter build blocked: set KnowledgeFrameworkRimWorldManagedPath or RIMWORLD_MANAGED_PATH to a local RimWorld Managed directory." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkAdapterAssemblyCSharpPath)')" Text="Bridge adapter build blocked: missing Assembly-CSharp.dll at '$(KnowledgeFrameworkAdapterAssemblyCSharpPath)'. No proprietary assemblies are downloaded." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkAdapterUnityCorePath)')" Text="Bridge adapter build blocked: missing UnityEngine.CoreModule.dll at '$(KnowledgeFrameworkAdapterUnityCorePath)'. No proprietary assemblies are downloaded." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkPrimaryAssemblyPath)')" Text="Bridge adapter build blocked: missing KnowledgeFramework.dll at '$(KnowledgeFrameworkPrimaryAssemblyPath)'. Build the primary framework first or set KnowledgeFrameworkPrimaryAssemblyPath/KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH." />
+  </Target>
 </Project>

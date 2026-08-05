@@ -17,7 +17,7 @@ namespace KnowledgeFrameworkBridgeAdapter
         };
 
         public static string BridgeAdapterInfo() =>
-            "KnowledgeFramework|3.0.0|Versioned V3 claims, contexts, recipes, milestones, structural relations, migration, and compatibility probes.";
+            "KnowledgeFramework|" + KnowledgeFrameworkApi.ReleaseVersion + "|Versioned V3 claims, contexts, recipes, milestones, structural relations, migration, and compatibility probes.";
 
         public static List<string> ExecuteBridgeCommand(string command, string argument, Map map)
         {

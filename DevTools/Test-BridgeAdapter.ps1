@@ -2,7 +2,7 @@ param([string]$ModRoot = (Join-Path $PSScriptRoot '..'))
 $ErrorActionPreference = 'Stop'
 $expectedId = 'KnowledgeFramework'
 $expectedPackage = 'lan.knowledgeframework'
-$directory = [IO.Path]::GetFullPath((Join-Path $ModRoot 'DevTools\BridgeAdapters'))
+$directory = [IO.Path]::GetFullPath((Join-Path $ModRoot 'DevTools/BridgeAdapters'))
 $manifests = @(Get-ChildItem -LiteralPath $directory -Filter '*.manifest.json' -File)
 if ($manifests.Count -ne 1) { throw "Expected one $expectedId manifest, found $($manifests.Count)." }
 $manifest = Get-Content -LiteralPath $manifests[0].FullName -Raw | ConvertFrom-Json

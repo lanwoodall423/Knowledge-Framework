@@ -28,6 +28,7 @@ namespace KnowledgeFramework
         private static readonly Dictionary<string, string> DomainAliases = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, string> SubjectAliases = new Dictionary<string, string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, KnowledgeSubjectRegistration> SubjectOverrides = new Dictionary<string, KnowledgeSubjectRegistration>(StringComparer.Ordinal);
+        private static readonly HashSet<string> PersistedSubjectOverrideKeys = new HashSet<string>(StringComparer.Ordinal);
         private static readonly Dictionary<string, SubjectRegistrationMetadata> SubjectRegistrationSources = new Dictionary<string, SubjectRegistrationMetadata>(StringComparer.Ordinal);
         private static readonly List<KnowledgeValidationIssue> Issues = new List<KnowledgeValidationIssue>();
         private static readonly HashSet<string> IssueKeys = new HashSet<string>(StringComparer.Ordinal);
@@ -102,6 +103,7 @@ namespace KnowledgeFramework
                 foreach (KnowledgeExpertiseNamespaceDef expertiseNamespace in registration.expertiseNamespaces ?? Array.Empty<KnowledgeExpertiseNamespaceDef>())
                     KnowledgeSharedExpertiseService.RegisterNamespace(expertiseNamespace, true);
                 RebuildDependencyIndexes();
+                GameComponent_KnowledgeFramework.Current?.MigrateAliasesV3();
                 KnowledgeDiagnostics.RecordRegistration(stopwatch.ElapsedTicks);
             }
             return result;
@@ -117,7 +119,11 @@ namespace KnowledgeFramework
                 AddIssue("registration.subject", domainId + "/" + (subject?.id ?? "<null>"), "Subject registration references an unknown domain or invalid ID.");
                 return false;
             }
-            string key = SubjectKey(domainId, subject.id);
+            string canonicalSubjectId = ResolveSubjectId(domainId, subject.id) ?? subject.id;
+            KnowledgeSubjectRegistration canonicalSubject = CloneSubject(subject);
+            canonicalSubject.id = canonicalSubjectId;
+            canonicalSubject.templateSubjectId = ResolveSubjectId(domainId, canonicalSubject.templateSubjectId) ?? canonicalSubject.templateSubjectId;
+            string key = SubjectKey(domainId, canonicalSubjectId);
             if (StaticSubjects.ContainsKey(key) && options.conflict == KnowledgeRegistrationConflict.Reject)
             {
                 AddIssue("registration.subject.duplicate", key, "Duplicate subject registration was rejected.");
@@ -133,12 +139,13 @@ namespace KnowledgeFramework
                     return false;
                 }
             }
-            StaticSubjects[key] = new KnowledgeSubjectSnapshot(domainId, subject);
-            SubjectOverrides[key] = CloneSubject(subject);
+            StaticSubjects[key] = new KnowledgeSubjectSnapshot(domainId, canonicalSubject);
+            SubjectOverrides[key] = CloneSubject(canonicalSubject);
+            PersistedSubjectOverrideKeys.Remove(key);
             SubjectRegistrationSources[key] = new SubjectRegistrationMetadata
             {
                 priority = options.priority,
-                source = options.source ?? subject.source ?? "dynamic"
+                source = options.source ?? canonicalSubject.source ?? "dynamic"
             };
             DynamicSubjects.Remove(key);
             revision++;
@@ -154,6 +161,7 @@ namespace KnowledgeFramework
                 metadata.source != source)) return false;
             StaticSubjects.Remove(key);
             SubjectOverrides.Remove(key);
+            PersistedSubjectOverrideKeys.Remove(key);
             SubjectRegistrationSources.Remove(key);
             DynamicSubjects.Remove(key);
             revision++;
@@ -170,6 +178,7 @@ namespace KnowledgeFramework
             foreach (string key in StaticSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) StaticSubjects.Remove(key);
             foreach (string key in DynamicSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) DynamicSubjects.Remove(key);
             foreach (string key in SubjectOverrides.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectOverrides.Remove(key);
+            foreach (string key in PersistedSubjectOverrideKeys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) PersistedSubjectOverrideKeys.Remove(key);
             foreach (string key in SubjectRegistrationSources.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)).ToList()) SubjectRegistrationSources.Remove(key);
             foreach (string key in DomainAliases.Where(item => item.Key == domainId || ResolveDomainId(item.Value) == domainId)
                 .Select(item => item.Key).ToList()) DomainAliases.Remove(key);
@@ -192,24 +201,151 @@ namespace KnowledgeFramework
                 DomainAliases.Remove(oldId);
                 return false;
             }
-            GameComponent_KnowledgeFramework.Current?.MigrateAliasesV2();
+            MigrateDomainAliasKeys(ResolveDomainId(oldId));
+            GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
+            component?.MigrateAliasesV2();
+            component?.MigrateAliasesV3();
             revision++;
             return true;
+        }
+
+        private static void MigrateDomainAliasKeys(string canonicalDomainId)
+        {
+            bool changed = false;
+            foreach (KeyValuePair<string, KnowledgeSubjectSnapshot> pair in StaticSubjects.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] == canonicalDomainId || ResolveDomainId(parts[0]) != canonicalDomainId) continue;
+                string canonicalSubjectId = ResolveSubjectId(canonicalDomainId, parts[1]) ?? parts[1];
+                string targetKey = SubjectKey(canonicalDomainId, canonicalSubjectId);
+                if (!StaticSubjects.ContainsKey(targetKey)) StaticSubjects[targetKey] = new KnowledgeSubjectSnapshot(pair.Value, canonicalDomainId, canonicalSubjectId);
+                StaticSubjects.Remove(pair.Key);
+                changed = true;
+            }
+            foreach (KeyValuePair<string, KnowledgeSubjectRegistration> pair in SubjectOverrides.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] == canonicalDomainId || ResolveDomainId(parts[0]) != canonicalDomainId) continue;
+                string canonicalSubjectId = ResolveSubjectId(canonicalDomainId, parts[1]) ?? parts[1];
+                string targetKey = SubjectKey(canonicalDomainId, canonicalSubjectId);
+                if (!SubjectOverrides.ContainsKey(targetKey))
+                {
+                    KnowledgeSubjectRegistration value = CloneSubject(pair.Value);
+                    value.id = canonicalSubjectId;
+                    value.templateSubjectId = ResolveSubjectId(canonicalDomainId, value.templateSubjectId) ?? value.templateSubjectId;
+                    SubjectOverrides[targetKey] = value;
+                }
+                SubjectOverrides.Remove(pair.Key);
+                if (PersistedSubjectOverrideKeys.Remove(pair.Key)) PersistedSubjectOverrideKeys.Add(targetKey);
+                changed = true;
+            }
+            foreach (KeyValuePair<string, SubjectRegistrationMetadata> pair in SubjectRegistrationSources.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] == canonicalDomainId || ResolveDomainId(parts[0]) != canonicalDomainId) continue;
+                string targetKey = SubjectKey(canonicalDomainId, parts[1]);
+                if (!SubjectRegistrationSources.ContainsKey(targetKey)) SubjectRegistrationSources[targetKey] = pair.Value;
+                SubjectRegistrationSources.Remove(pair.Key);
+                changed = true;
+            }
+            foreach (string key in DynamicSubjects.Keys.Where(value =>
+                value.IndexOf('\n') > 0 && ResolveDomainId(value.Substring(0, value.IndexOf('\n'))) == canonicalDomainId &&
+                !value.StartsWith(canonicalDomainId + "\n", StringComparison.Ordinal)).ToList())
+            {
+                DynamicSubjects.Remove(key);
+                changed = true;
+            }
+            foreach (KeyValuePair<string, string> pair in SubjectAliases.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] == canonicalDomainId || ResolveDomainId(parts[0]) != canonicalDomainId) continue;
+                string targetKey = SubjectKey(canonicalDomainId, parts[1]);
+                if (!SubjectAliases.ContainsKey(targetKey)) SubjectAliases[targetKey] = pair.Value;
+                SubjectAliases.Remove(pair.Key);
+                changed = true;
+            }
+            if (changed)
+            {
+                revision++;
+                KnowledgeUiCache.Reset();
+            }
         }
 
         public static bool RegisterSubjectAlias(string domainId, string oldId, string currentId)
         {
             if (!ValidId(domainId) || !ValidId(oldId) || !ValidId(currentId) || oldId == currentId) return false;
-            string key = SubjectKey(domainId, oldId);
+            string canonicalDomainId = ResolveDomainId(domainId);
+            if (canonicalDomainId.NullOrEmpty()) return false;
+            string key = SubjectKey(canonicalDomainId, oldId);
             SubjectAliases[key] = currentId;
             if (ResolveSubjectId(domainId, oldId) == null)
             {
                 SubjectAliases.Remove(key);
                 return false;
             }
-            GameComponent_KnowledgeFramework.Current?.MigrateAliasesV2();
+            string canonicalSubjectId = ResolveSubjectId(canonicalDomainId, currentId) ?? currentId;
+            MigrateSubjectAliasKeys(canonicalDomainId, canonicalSubjectId);
+            GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
+            component?.MigrateAliasesV2();
+            component?.MigrateAliasesV3();
             revision++;
             return true;
+        }
+
+        private static void MigrateSubjectAliasKeys(string domainId, string canonicalSubjectId)
+        {
+            bool changed = false;
+            foreach (KeyValuePair<string, KnowledgeSubjectSnapshot> pair in StaticSubjects.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] != domainId || parts[1] == canonicalSubjectId ||
+                    ResolveSubjectId(domainId, parts[1]) != canonicalSubjectId) continue;
+                string targetKey = SubjectKey(domainId, canonicalSubjectId);
+                if (!StaticSubjects.ContainsKey(targetKey)) StaticSubjects[targetKey] = new KnowledgeSubjectSnapshot(pair.Value, domainId, canonicalSubjectId);
+                StaticSubjects.Remove(pair.Key);
+                changed = true;
+            }
+            foreach (KeyValuePair<string, KnowledgeSubjectRegistration> pair in SubjectOverrides.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] != domainId || parts[1] == canonicalSubjectId ||
+                    ResolveSubjectId(domainId, parts[1]) != canonicalSubjectId) continue;
+                string targetKey = SubjectKey(domainId, canonicalSubjectId);
+                if (!SubjectOverrides.ContainsKey(targetKey))
+                {
+                    KnowledgeSubjectRegistration value = CloneSubject(pair.Value);
+                    value.id = canonicalSubjectId;
+                    value.templateSubjectId = ResolveSubjectId(domainId, value.templateSubjectId) ?? value.templateSubjectId;
+                    SubjectOverrides[targetKey] = value;
+                }
+                SubjectOverrides.Remove(pair.Key);
+                if (PersistedSubjectOverrideKeys.Remove(pair.Key)) PersistedSubjectOverrideKeys.Add(targetKey);
+                changed = true;
+            }
+            foreach (KeyValuePair<string, SubjectRegistrationMetadata> pair in SubjectRegistrationSources.ToList())
+            {
+                string[] parts = pair.Key.Split(new[] { '\n' }, 2);
+                if (parts.Length != 2 || parts[0] != domainId || parts[1] == canonicalSubjectId ||
+                    ResolveSubjectId(domainId, parts[1]) != canonicalSubjectId) continue;
+                string targetKey = SubjectKey(domainId, canonicalSubjectId);
+                if (!SubjectRegistrationSources.ContainsKey(targetKey)) SubjectRegistrationSources[targetKey] = pair.Value;
+                SubjectRegistrationSources.Remove(pair.Key);
+                changed = true;
+            }
+            foreach (string key in DynamicSubjects.Keys.Where(value => value.StartsWith(domainId + "\n", StringComparison.Ordinal)).ToList())
+            {
+                string[] parts = key.Split(new[] { '\n' }, 2);
+                if (parts.Length == 2 && parts[1] != canonicalSubjectId && ResolveSubjectId(domainId, parts[1]) == canonicalSubjectId)
+                {
+                    DynamicSubjects.Remove(key);
+                    changed = true;
+                }
+            }
+            if (changed)
+            {
+                revision++;
+                KnowledgeUiCache.Reset();
+            }
         }
 
         public static KnowledgeSchema Schema(string domainId)
@@ -373,10 +509,35 @@ namespace KnowledgeFramework
         internal static void RestoreSubjectOverride(KnowledgeSubjectRegistration value, string domainId)
         {
             if (value == null || !ValidId(value.id)) return;
-            string key = SubjectKey(ResolveDomainId(domainId), value.id);
-            SubjectOverrides[key] = CloneSubject(value);
+            string canonicalDomain = ResolveDomainId(domainId);
+            string canonicalSubject = ResolveSubjectId(canonicalDomain, value.id) ?? value.id;
+            string key = SubjectKey(canonicalDomain, canonicalSubject);
+            if (key == null) return;
+            KnowledgeSubjectRegistration restored = CloneSubject(value);
+            restored.id = canonicalSubject;
+            restored.templateSubjectId = ResolveSubjectId(canonicalDomain, restored.templateSubjectId) ?? restored.templateSubjectId;
+            SubjectOverrides[key] = restored;
+            PersistedSubjectOverrideKeys.Add(key);
             if (!SubjectRegistrationSources.ContainsKey(key))
-                SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = value.source ?? "persisted" };
+                SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = restored.source ?? "persisted" };
+        }
+
+        internal static void ClearPersistedSubjectOverrides()
+        {
+            bool changed = false;
+            foreach (string key in PersistedSubjectOverrideKeys.ToList())
+            {
+                changed |= SubjectOverrides.Remove(key);
+                DynamicSubjects.Remove(key);
+                if (SubjectRegistrationSources.TryGetValue(key, out SubjectRegistrationMetadata metadata) && metadata.priority == 0 &&
+                    metadata.source == "persisted") SubjectRegistrationSources.Remove(key);
+            }
+            PersistedSubjectOverrideKeys.Clear();
+            if (changed)
+            {
+                revision++;
+                KnowledgeUiCache.Reset();
+            }
         }
 
         internal static IReadOnlyList<KnowledgeInsightDef> InsightsFor(string domainId, string facetId)
@@ -481,13 +642,38 @@ namespace KnowledgeFramework
                 AddIssue("definition.subject", subject.defName, "Static subject references an unknown domain or invalid stable ID.");
                 return;
             }
-            string key = SubjectKey(domainId, subject.StableId);
+            string canonicalSubjectId = ResolveSubjectId(domainId, subject.StableId) ?? subject.StableId;
+            string key = SubjectKey(domainId, canonicalSubjectId);
             if (StaticSubjects.ContainsKey(key))
             {
                 AddIssue("definition.subject.duplicate", key, "Duplicate static subject was rejected.");
                 return;
             }
-            StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, subject));
+            if (canonicalSubjectId == subject.StableId) StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, subject));
+            else
+            {
+                KnowledgeSubjectRegistration registration = new KnowledgeSubjectRegistration
+                {
+                    id = canonicalSubjectId,
+                    label = subject.LabelCap,
+                    description = subject.description,
+                    unidentifiedLabel = subject.unidentifiedLabel,
+                    unidentifiedDescription = subject.unidentifiedDescription,
+                    iconPath = subject.iconPath,
+                    sourceDef = subject,
+                    templateSubjectId = ResolveSubjectId(domainId, subject.templateSubjectId) ?? subject.templateSubjectId,
+                    templateKnowledgeCoefficient = subject.templateKnowledgeCoefficient,
+                    templateConfidenceCoefficient = subject.templateConfidenceCoefficient,
+                    categoryIds = subject.categoryIds,
+                    sortOrder = subject.sortOrder,
+                    archetypeId = subject.archetypeId,
+                    applicableFacetIds = subject.applicableFacetIds,
+                    applicableClaimIds = subject.applicableClaimIds,
+                    state = subject.state,
+                    source = "Defs"
+                };
+                StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, registration));
+            }
             SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = "Defs" };
         }
 

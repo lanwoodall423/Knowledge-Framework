@@ -352,6 +352,12 @@ namespace KnowledgeFramework
                 NormalizeFacetIdentity(item);
             foreach (ExpertiseStateRecord item in expertiseV2 ?? Enumerable.Empty<ExpertiseStateRecord>())
                 if (item != null) item.domainId = KnowledgeRegistry.ResolveDomainId(item.domainId);
+            foreach (InsightActivationRecord item in insightsV2 ?? Enumerable.Empty<InsightActivationRecord>())
+            {
+                if (item == null) continue;
+                item.domainId = KnowledgeRegistry.ResolveDomainId(item.domainId);
+                item.subjectId = KnowledgeRegistry.ResolveSubjectId(item.domainId, item.subjectId);
+            }
         }
 
         private static void NormalizeSubjectIdentity(KnowledgeSubjectStateRecord item)
@@ -541,12 +547,13 @@ namespace KnowledgeFramework
 
         internal void RemoveDomainDataV2(string domainId)
         {
-            personalSubjectsV2.RemoveAll(item => item?.domainId == domainId);
-            colonySubjectsV2.RemoveAll(item => item?.domainId == domainId);
-            personalFacetsV2.RemoveAll(item => item?.domainId == domainId);
-            colonyFacetsV2.RemoveAll(item => item?.domainId == domainId);
-            expertiseV2.RemoveAll(item => item?.domainId == domainId);
-            insightsV2.RemoveAll(item => item?.domainId == domainId);
+            string canonicalDomain = KnowledgeRegistry.ResolveDomainId(domainId) ?? domainId;
+            personalSubjectsV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
+            colonySubjectsV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
+            personalFacetsV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
+            colonyFacetsV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
+            expertiseV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
+            insightsV2.RemoveAll(item => item != null && KnowledgeRegistry.ResolveDomainId(item.domainId) == canonicalDomain);
             RebuildV2Indexes();
             RemoveDomainDataV3(domainId);
         }

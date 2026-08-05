@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Reflection;
 using RimWorld;
 using UnityEngine;
 using Verse;
@@ -14,6 +15,18 @@ namespace KnowledgeFramework
         public const int ApiVersion = 3;
         public const int SecondGenerationApiVersion = 2;
         public const int ThirdGenerationApiVersion = 3;
+
+        /// <summary>Semantic release version. This is independent from the integer API capability generation.</summary>
+        public static string ReleaseVersion
+        {
+            get
+            {
+                AssemblyInformationalVersionAttribute attribute = typeof(KnowledgeFrameworkApi).Assembly
+                    .GetCustomAttributes(typeof(AssemblyInformationalVersionAttribute), false)
+                    .OfType<AssemblyInformationalVersionAttribute>().FirstOrDefault();
+                return attribute?.InformationalVersion ?? string.Empty;
+            }
+        }
         public const string DomainsCapability = "domains";
         public const string ColonyKnowledgeCapability = "colony-knowledge";
         public const string PawnKnowledgeCapability = "pawn-knowledge";

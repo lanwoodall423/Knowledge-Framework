@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LanguageData>
+  <ReferenceConsumer_ModTitle>Knowledge Framework Reference Consumer</ReferenceConsumer_ModTitle>
+  <ReferenceConsumer_DomainLabel>Field Guide</ReferenceConsumer_DomainLabel>
+  <ReferenceConsumer_DomainDescription>A small field guide demonstrating the public Knowledge Framework contract.</ReferenceConsumer_DomainDescription>
+  <ReferenceConsumer_FacetObservation>Observation</ReferenceConsumer_FacetObservation>
+  <ReferenceConsumer_FacetObservationDescription>Direct evidence recorded by the observing pawn.</ReferenceConsumer_FacetObservationDescription>
+  <ReferenceConsumer_FacetHabitat>Habitat</ReferenceConsumer_FacetHabitat>
+  <ReferenceConsumer_FacetHabitatDescription>Where the reference specimen is found.</ReferenceConsumer_FacetHabitatDescription>
+  <ReferenceConsumer_StageEncountered>Encountered</ReferenceConsumer_StageEncountered>
+  <ReferenceConsumer_StageEncounteredDescription>The subject has been encountered.</ReferenceConsumer_StageEncounteredDescription>
+  <ReferenceConsumer_StageStudied>Studied</ReferenceConsumer_StageStudied>
+  <ReferenceConsumer_StageStudiedDescription>The subject has enough balanced evidence for study.</ReferenceConsumer_StageStudiedDescription>
+  <ReferenceConsumer_StageDocumented>Documented</ReferenceConsumer_StageDocumented>
+  <ReferenceConsumer_StageDocumentedDescription>The evidence has been recorded for the colony.</ReferenceConsumer_StageDocumentedDescription>
+  <ReferenceConsumer_MilestoneDocumented>Field guide entry documented</ReferenceConsumer_MilestoneDocumented>
+  <ReferenceConsumer_MilestoneDocumentedDescription>The field guide entry is complete.</ReferenceConsumer_MilestoneDocumentedDescription>
+  <ReferenceConsumer_SubjectReference>Reference specimen</ReferenceConsumer_SubjectReference>
+  <ReferenceConsumer_SubjectReferenceDescription>A static Def-backed subject used by the compatibility example.</ReferenceConsumer_SubjectReferenceDescription>
+  <ReferenceConsumer_DynamicSubject>Observed specimen</ReferenceConsumer_DynamicSubject>
+  <ReferenceConsumer_DynamicSubjectDescription>A subject registered by the consumer at runtime.</ReferenceConsumer_DynamicSubjectDescription>
+</LanguageData>

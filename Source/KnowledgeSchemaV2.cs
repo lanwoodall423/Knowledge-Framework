@@ -168,6 +168,28 @@ namespace KnowledgeFramework
             state = value.state;
         }
 
+        internal KnowledgeSubjectSnapshot(KnowledgeSubjectSnapshot value, string domainId, string subjectId)
+        {
+            this.domainId = domainId;
+            id = subjectId;
+            label = value.label;
+            description = value.description;
+            unidentifiedLabel = value.unidentifiedLabel;
+            unidentifiedDescription = value.unidentifiedDescription;
+            iconPath = value.iconPath;
+            sourceDef = value.sourceDef;
+            templateSubjectId = value.templateSubjectId;
+            templateKnowledgeCoefficient = value.templateKnowledgeCoefficient;
+            templateConfidenceCoefficient = value.templateConfidenceCoefficient;
+            categoryIds = value.categoryIds;
+            sortOrder = value.sortOrder;
+            dynamic = value.dynamic;
+            archetypeId = value.archetypeId;
+            applicableFacetIds = value.applicableFacetIds;
+            applicableClaimIds = value.applicableClaimIds;
+            state = value.state;
+        }
+
         private static IReadOnlyList<string> ReadOnly(IEnumerable<string> values) =>
             new ReadOnlyCollection<string>((values ?? Enumerable.Empty<string>()).Where(value => !value.NullOrEmpty()).Distinct().ToList());
     }

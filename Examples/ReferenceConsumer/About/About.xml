@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ModMetaData>
+  <name>Knowledge Framework Reference Consumer</name>
+  <author>Knowledge Framework contributors</author>
+  <packageId>lan.knowledgeframework.referenceconsumer</packageId>
+  <modVersion>3.0.0-beta.1</modVersion>
+  <supportedVersions>
+    <li>1.6</li>
+  </supportedVersions>
+  <dependencies>
+    <li>
+      <packageId>lan.knowledgeframework</packageId>
+      <displayName>Knowledge Framework</displayName>
+    </li>
+  </dependencies>
+  <loadAfter>
+    <li>lan.knowledgeframework</li>
+  </loadAfter>
+  <description>Small executable documentation and compatibility fixture for Knowledge Framework V3 consumers.</description>
+</ModMetaData>

@@ -10,5 +10,6 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\Source\KnowledgeFramework.csproj" />
+    <EmbeddedResource Include="..\PublicApiBaseline.txt" Link="PublicApiBaseline.txt" />
   </ItemGroup>
 </Project>

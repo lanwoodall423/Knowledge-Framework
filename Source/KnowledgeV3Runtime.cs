@@ -14,16 +14,38 @@ namespace KnowledgeFramework
     public static class KnowledgeContextRegistry
     {
         private const int MaximumChainDepth = 64;
+        // Keep provider-controlled menus bounded even when a provider returns an unbounded stream.
+        private const int MaximumPresentationContexts = 512;
         private static readonly Dictionary<string, KnowledgeContextTypeDef> Types = new Dictionary<string, KnowledgeContextTypeDef>(StringComparer.Ordinal);
         private static readonly Dictionary<string, IKnowledgeContextResolver> Resolvers = new Dictionary<string, IKnowledgeContextResolver>(StringComparer.Ordinal);
         private static readonly Dictionary<string, IKnowledgeContextPresentationProvider> PresentationProviders =
             new Dictionary<string, IKnowledgeContextPresentationProvider>(StringComparer.Ordinal);
+        private static readonly Dictionary<string, PresentationSnapshot> PresentationSnapshots =
+            new Dictionary<string, PresentationSnapshot>(StringComparer.Ordinal);
+        private static int revision;
+
+        internal static int Revision => revision;
+
+        internal sealed class PresentationSnapshot
+        {
+            internal readonly IReadOnlyList<KnowledgeContextKey> contexts;
+            internal readonly HashSet<KnowledgeContextKey> authorized;
+
+            internal PresentationSnapshot(IEnumerable<KnowledgeContextKey> values)
+            {
+                List<KnowledgeContextKey> ordered = (values ?? Enumerable.Empty<KnowledgeContextKey>())
+                    .Distinct().OrderBy(value => value, Comparer<KnowledgeContextKey>.Create(CompareContexts)).ToList();
+                contexts = new ReadOnlyCollection<KnowledgeContextKey>(ordered);
+                authorized = new HashSet<KnowledgeContextKey>(ordered);
+            }
+        }
 
         public static bool RegisterType(KnowledgeContextTypeDef definition, bool replace = false)
         {
             if (definition == null || definition.StableId.NullOrEmpty() ||
                 Types.ContainsKey(definition.StableId) && !replace) return false;
             Types[definition.StableId] = definition;
+            InvalidatePresentationSnapshots();
             return true;
         }
 
@@ -31,6 +53,7 @@ namespace KnowledgeFramework
         {
             if (typeId.NullOrEmpty() || resolver == null || Resolvers.ContainsKey(typeId) && !replace) return false;
             Resolvers[typeId] = resolver;
+            InvalidatePresentationSnapshots();
             return true;
         }
 
@@ -44,7 +67,7 @@ namespace KnowledgeFramework
         {
             if (typeId.NullOrEmpty() || provider == null || PresentationProviders.ContainsKey(typeId) && !replace) return false;
             PresentationProviders[typeId] = provider;
-            KnowledgeUiCache.Invalidate(Array.Empty<KnowledgeChange>());
+            InvalidatePresentationSnapshots();
             return true;
         }
 
@@ -55,24 +78,17 @@ namespace KnowledgeFramework
         public static IReadOnlyList<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn,
             KnowledgeScope scope, IEnumerable<KnowledgeContextKey> persisted = null)
         {
-            HashSet<KnowledgeContextKey> result = new HashSet<KnowledgeContextKey>();
+            SortedSet<KnowledgeContextKey> result = new SortedSet<KnowledgeContextKey>(Comparer<KnowledgeContextKey>.Create(CompareContexts));
             foreach (KnowledgeContextKey value in persisted ?? Enumerable.Empty<KnowledgeContextKey>())
-                if (!value.IsEmpty && !value.IsPartial && Type(value.typeId) != null) result.Add(value);
-            foreach (KeyValuePair<string, IKnowledgeContextPresentationProvider> pair in PresentationProviders)
-            {
-                IEnumerable<KnowledgeContextKey> values;
-                try { values = pair.Value.KnownContexts(domainId, subjectId, pawn, scope); }
-                catch (Exception exception)
-                {
-                    KnowledgeLog.ErrorOnce("context-options:" + pair.Key, "A context presentation provider failed.", exception);
-                    continue;
-                }
-                foreach (KnowledgeContextKey value in values ?? Enumerable.Empty<KnowledgeContextKey>())
-                    if (!value.IsEmpty && !value.IsPartial && value.typeId == pair.Key && Type(value.typeId) != null) result.Add(value);
-            }
-            return result.OrderBy(value => Type(value.typeId)?.label ?? string.Empty, StringComparer.Ordinal)
-                .ThenBy(value => value.typeId, StringComparer.Ordinal).ThenBy(value => value.stableId, StringComparer.Ordinal).ToList();
+                AddBounded(result, value);
+            foreach (KnowledgeContextKey value in PresentationSnapshotFor(domainId, subjectId, pawn, scope).contexts)
+                AddBounded(result, value);
+            return result.ToList();
         }
+
+        internal static IReadOnlyList<KnowledgeContextKey> OrderContexts(IEnumerable<KnowledgeContextKey> values) =>
+            (values ?? Enumerable.Empty<KnowledgeContextKey>()).Where(value => !value.IsEmpty && !value.IsPartial)
+                .Distinct().OrderBy(value => value, Comparer<KnowledgeContextKey>.Create(CompareContexts)).ToList();
 
         public static string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
         {
@@ -80,7 +96,12 @@ namespace KnowledgeFramework
             IKnowledgeContextPresentationProvider provider = PresentationProvider(context.typeId);
             if (provider == null) return null;
             if (!IsProviderKnownContext(context, domainId, subjectId, pawn, scope)) return null;
-            try { return provider.ValueLabel(context, domainId, subjectId, pawn, scope); }
+            try
+            {
+                string value = provider.ValueLabel(context, domainId, subjectId, pawn, scope)?.Trim();
+                return value.NullOrEmpty() || value == context.typeId || value == context.stableId || value == context.ToString()
+                    ? null : value;
+            }
             catch (Exception exception)
             {
                 KnowledgeLog.ErrorOnce("context-label:" + context.typeId, "A context value label provider failed.", exception);
@@ -94,16 +115,7 @@ namespace KnowledgeFramework
             if (context.IsEmpty || context.IsPartial) return false;
             IKnowledgeContextPresentationProvider provider = PresentationProvider(context.typeId);
             if (provider == null) return false;
-            try
-            {
-                return (provider.KnownContexts(domainId, subjectId, pawn, scope) ?? Enumerable.Empty<KnowledgeContextKey>())
-                    .Any(item => item.Equals(context));
-            }
-            catch (Exception exception)
-            {
-                KnowledgeLog.ErrorOnce("context-known:" + context.typeId, "A context presentation provider failed while authorizing a value.", exception);
-                return false;
-            }
+            return PresentationSnapshotFor(domainId, subjectId, pawn, scope).authorized.Contains(context);
         }
 
         public static KnowledgeContextTypeDef Type(string typeId)
@@ -111,8 +123,62 @@ namespace KnowledgeFramework
             if (typeId.NullOrEmpty()) return null;
             if (Types.TryGetValue(typeId, out KnowledgeContextTypeDef result)) return result;
             KnowledgeContextTypeDef def = DefDatabase<KnowledgeContextTypeDef>.AllDefsListForReading.FirstOrDefault(item => item.StableId == typeId);
-            if (def != null) Types[typeId] = def;
+            if (def != null)
+            {
+                Types[typeId] = def;
+                InvalidatePresentationSnapshots();
+            }
             return def;
+        }
+
+        private static PresentationSnapshot PresentationSnapshotFor(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+        {
+            string key = string.Join("\n", domainId ?? string.Empty, subjectId ?? string.Empty,
+                pawn?.thingIDNumber.ToString() ?? "0", scope, KnowledgeQuery.Revision, KnowledgeUiCache.Revision,
+                KnowledgeRegistry.Revision, revision);
+            if (PresentationSnapshots.TryGetValue(key, out PresentationSnapshot snapshot)) return snapshot;
+            SortedSet<KnowledgeContextKey> values = new SortedSet<KnowledgeContextKey>(Comparer<KnowledgeContextKey>.Create(CompareContexts));
+            foreach (KeyValuePair<string, IKnowledgeContextPresentationProvider> pair in PresentationProviders.OrderBy(item => item.Key, StringComparer.Ordinal))
+            {
+                try
+                {
+                    foreach (KnowledgeContextKey value in pair.Value.KnownContexts(domainId, subjectId, pawn, scope) ?? Enumerable.Empty<KnowledgeContextKey>())
+                    {
+                        if (value.IsEmpty || value.IsPartial || value.typeId != pair.Key || Type(value.typeId) == null) continue;
+                        AddBounded(values, value);
+                    }
+                }
+                catch (Exception exception)
+                {
+                    KnowledgeLog.ErrorOnce("context-options:" + pair.Key, "A context presentation provider failed.", exception);
+                }
+            }
+            snapshot = new PresentationSnapshot(values);
+            PresentationSnapshots[key] = snapshot;
+            return snapshot;
+        }
+
+        private static void AddBounded(SortedSet<KnowledgeContextKey> values, KnowledgeContextKey value)
+        {
+            if (values == null || value.IsEmpty || value.IsPartial || Type(value.typeId) == null) return;
+            values.Add(value);
+            while (values.Count > MaximumPresentationContexts) values.Remove(values.Max);
+        }
+
+        private static int CompareContexts(KnowledgeContextKey left, KnowledgeContextKey right)
+        {
+            int type = string.Compare(Type(left.typeId)?.label ?? string.Empty, Type(right.typeId)?.label ?? string.Empty,
+                StringComparison.Ordinal);
+            if (type != 0) return type;
+            type = string.Compare(left.typeId, right.typeId, StringComparison.Ordinal);
+            return type != 0 ? type : string.Compare(left.stableId, right.stableId, StringComparison.Ordinal);
+        }
+
+        private static void InvalidatePresentationSnapshots()
+        {
+            revision++;
+            PresentationSnapshots.Clear();
+            KnowledgeUiCache.Invalidate(Array.Empty<KnowledgeChange>());
         }
 
         public static KnowledgeContextKey Parent(KnowledgeContextKey context)

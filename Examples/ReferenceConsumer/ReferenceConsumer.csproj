@@ -1,0 +1,40 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>ReferenceConsumer</RootNamespace>
+    <AssemblyName>ReferenceConsumer</AssemblyName>
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <OutputPath>$(MSBuildThisFileDirectory).artifacts/</OutputPath>
+    <ReferenceConsumerRimWorldManagedPath Condition="'$(ReferenceConsumerRimWorldManagedPath)' == ''">$(RimWorldManagedPath)</ReferenceConsumerRimWorldManagedPath>
+    <ReferenceConsumerRimWorldManagedPath Condition="'$(ReferenceConsumerRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_PATH)</ReferenceConsumerRimWorldManagedPath>
+    <ReferenceConsumerRimWorldManagedPath Condition="'$(ReferenceConsumerRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_ASSEMBLIES)</ReferenceConsumerRimWorldManagedPath>
+    <ReferenceConsumerKnowledgeFrameworkAssemblyPath Condition="'$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)' == ''">$(KnowledgeFrameworkAssemblyPath)</ReferenceConsumerKnowledgeFrameworkAssemblyPath>
+    <ReferenceConsumerKnowledgeFrameworkAssemblyPath Condition="'$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)' == ''">$(KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH)</ReferenceConsumerKnowledgeFrameworkAssemblyPath>
+    <ReferenceConsumerKnowledgeFrameworkAssemblyPath Condition="'$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)' == ''">$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../1.6/Assemblies/KnowledgeFramework.dll'))</ReferenceConsumerKnowledgeFrameworkAssemblyPath>
+    <ReferenceConsumerAssemblyCSharpPath>$([System.IO.Path]::Combine('$(ReferenceConsumerRimWorldManagedPath)', 'Assembly-CSharp.dll'))</ReferenceConsumerAssemblyCSharpPath>
+    <ReferenceConsumerUnityCorePath>$([System.IO.Path]::Combine('$(ReferenceConsumerRimWorldManagedPath)', 'UnityEngine.CoreModule.dll'))</ReferenceConsumerUnityCorePath>
+    <ReferenceConsumerUnityGuiPath>$([System.IO.Path]::Combine('$(ReferenceConsumerRimWorldManagedPath)', 'UnityEngine.IMGUIModule.dll'))</ReferenceConsumerUnityGuiPath>
+    <ReferenceConsumerUnityTextPath>$([System.IO.Path]::Combine('$(ReferenceConsumerRimWorldManagedPath)', 'UnityEngine.TextRenderingModule.dll'))</ReferenceConsumerUnityTextPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Reference Include="KnowledgeFramework"><HintPath>$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="Assembly-CSharp"><HintPath>$(ReferenceConsumerAssemblyCSharpPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.CoreModule"><HintPath>$(ReferenceConsumerUnityCorePath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.IMGUIModule"><HintPath>$(ReferenceConsumerUnityGuiPath)</HintPath><Private>false</Private></Reference>
+    <Reference Include="UnityEngine.TextRenderingModule"><HintPath>$(ReferenceConsumerUnityTextPath)</HintPath><Private>false</Private></Reference>
+  </ItemGroup>
+  <Target Name="ValidateReferenceConsumerDependencies" BeforeTargets="ResolveReferences">
+    <Error Condition="'$(ReferenceConsumerRimWorldManagedPath)' == ''" Text="Reference Consumer build blocked: set ReferenceConsumerRimWorldManagedPath or RIMWORLD_MANAGED_PATH to a local RimWorld Managed directory." />
+    <Error Condition="'$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)' == ''" Text="Reference Consumer build blocked: set ReferenceConsumerKnowledgeFrameworkAssemblyPath or KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH to KnowledgeFramework.dll." />
+    <Error Condition="!Exists('$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)')" Text="Reference Consumer build blocked: missing KnowledgeFramework.dll at '$(ReferenceConsumerKnowledgeFrameworkAssemblyPath)'." />
+    <Error Condition="!Exists('$(ReferenceConsumerAssemblyCSharpPath)')" Text="Reference Consumer build blocked: missing Assembly-CSharp.dll at '$(ReferenceConsumerAssemblyCSharpPath)'. Supply a legitimate local RimWorld Managed directory; no assemblies are downloaded." />
+    <Error Condition="!Exists('$(ReferenceConsumerUnityCorePath)')" Text="Reference Consumer build blocked: missing UnityEngine.CoreModule.dll at '$(ReferenceConsumerUnityCorePath)'." />
+    <Error Condition="!Exists('$(ReferenceConsumerUnityGuiPath)')" Text="Reference Consumer build blocked: missing UnityEngine.IMGUIModule.dll at '$(ReferenceConsumerUnityGuiPath)'." />
+    <Error Condition="!Exists('$(ReferenceConsumerUnityTextPath)')" Text="Reference Consumer build blocked: missing UnityEngine.TextRenderingModule.dll at '$(ReferenceConsumerUnityTextPath)'." />
+  </Target>
+</Project>

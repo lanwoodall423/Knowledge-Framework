@@ -133,10 +133,20 @@ namespace KnowledgeFramework
                 parentTypeId = "verification.region",
                 allowFallback = false
             }, true);
+            KnowledgeContextRegistry.RegisterType(new KnowledgeContextTypeDef
+            {
+                defName = "VerificationThrowingContext",
+                stableId = "verification.region.throwing",
+                label = "Throwing context"
+            }, true);
+            VerificationContextPresentationProvider.EmitLarge = false;
+            VerificationContextPresentationProvider.ResetCounters();
             KnowledgeContextRegistry.RegisterPresentationProvider("verification.region",
                 new VerificationContextPresentationProvider(), true);
             KnowledgeContextRegistry.RegisterPresentationProvider("verification.region.child",
                 new VerificationContextPresentationProvider(), true);
+            KnowledgeContextRegistry.RegisterPresentationProvider("verification.region.throwing",
+                new ThrowingContextPresentationProvider(), true);
             KnowledgeRelationService.RegisterType(new KnowledgeSubjectRelationTypeDef { defName = "VerificationParent", stableId = "verification.parent", parentage = true }, true);
             KnowledgeExpertiseNamespaceDef namespaceDef = new KnowledgeExpertiseNamespaceDef { defName = "VerificationField", stableId = "verification.field", adept = 1f, expert = 2f, master = 3f };
             KnowledgeSharedExpertiseService.RegisterNamespace(namespaceDef, true);
@@ -347,6 +357,7 @@ namespace KnowledgeFramework
                         SubmitStageKnowledge(pawn, "many", "b", 10f, false, aggregationContext);
                         SubmitStageKnowledge(pawn, "context-only", "a", 10f, false, aggregationContext);
                         SubmitStageKnowledge(pawn, "context-only", "b", 10f, false, aggregationContext);
+                        SubmitStageKnowledge(pawn, "global-context-only", "a", 10f);
                     }
                     string contextualStageBeforeRebuild = KnowledgeDiscovery.CurrentStage(AggregationDomainId, "many", pawn,
                         KnowledgeScope.Personal, aggregationContext);
@@ -366,7 +377,7 @@ namespace KnowledgeFramework
                     KnowledgeStageSnapshot globalContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId, "many", pawn,
                         KnowledgeScope.Personal, new KnowledgeContextKey("verification.region", "other"),
                         KnowledgeContextFallbackMode.ParentThenGlobal);
-                      Check("contextual stage exact parent global lookup", exactContextStage.stageId == "contextual" &&
+                       Check("contextual stage exact parent global lookup", exactContextStage.stageId == "contextual" &&
                           !exactContextStage.usedContextFallback && exactContextStage.provenance == KnowledgeStageProvenance.PersistedExact &&
                           parentContextStage.stageId == "contextual" && parentContextStage.provenance == KnowledgeStageProvenance.InheritedParent &&
                           parentContextStage.usedContextFallback && parentContextStage.resolvedContext.Equals(aggregationContext) &&
@@ -374,7 +385,23 @@ namespace KnowledgeFramework
                           globalContextStage.usedContextFallback &&
                           globalContextStage.resolvedContext.IsEmpty &&
                           !component.StageRecordsV3(AggregationDomainId, "many", pawn, false).Any(item => item.Context.Equals(childAggregationContext)),
-                          ref passed, failures);
+                           ref passed, failures);
+                       KnowledgeStageSnapshot globalContextSensitiveStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId,
+                           "global-context-only", pawn, KnowledgeScope.Personal,
+                           new KnowledgeContextKey("verification.region", "other"), KnowledgeContextFallbackMode.ParentThenGlobal);
+                       Check("context-sensitive global fallback keeps provenance", globalContextSensitiveStage.stageId == "global-contextual" &&
+                           globalContextSensitiveStage.contextSensitive && globalContextSensitiveStage.usedContextFallback &&
+                           globalContextSensitiveStage.provenance == KnowledgeStageProvenance.InheritedGlobal &&
+                           globalContextSensitiveStage.resolvedContext.IsEmpty &&
+                           globalContextSensitiveStage.requestedContext.Equals(new KnowledgeContextKey("verification.region", "other")),
+                           ref passed, failures);
+                       KnowledgeStageSnapshot noQualifyingContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId,
+                           "context-only", pawn, KnowledgeScope.Personal,
+                           new KnowledgeContextKey("verification.region", "unavailable"), KnowledgeContextFallbackMode.ExactOnly);
+                       Check("no qualifying contextual stage uses global result", noQualifyingContextStage.stageId == "base" &&
+                           noQualifyingContextStage.usedContextFallback && noQualifyingContextStage.resolvedContext.IsEmpty &&
+                           noQualifyingContextStage.provenance == KnowledgeStageProvenance.InheritedGlobal,
+                           ref passed, failures);
                       component.RemoveStageV3(AggregationDomainId, "many", pawn, false, aggregationContext);
                       KnowledgeStageSnapshot calculatedContextStage = KnowledgeDiscovery.StageSnapshot(AggregationDomainId, "many", pawn,
                           KnowledgeScope.Personal, aggregationContext, KnowledgeContextFallbackMode.ExactOnly);
@@ -632,6 +659,45 @@ namespace KnowledgeFramework
                     KnowledgeBrowserLabels.ContextValue(childContext, DomainId, "source", pawn, KnowledgeScope.Personal) == "Shared region" &&
                     KnowledgeBrowserLabels.ContextSelection(childContext, DomainId, "source", pawn, KnowledgeScope.Personal).Contains("Shared region"),
                     ref passed, failures);
+                VerificationContextPresentationProvider.ResetCounters();
+                IReadOnlyList<KnowledgeContextKey> orderedContextOptions = KnowledgeBrowserModels.ContextOptions(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext
+                }, "source");
+                int providerCallsAfterFirstOptions = VerificationContextPresentationProvider.KnownContextsCalls;
+                IReadOnlyList<KnowledgeContextKey> repeatedContextOptions = KnowledgeBrowserModels.ContextOptions(new KnowledgeBrowserFilter
+                {
+                    domainId = DomainId,
+                    pawn = pawn,
+                    scope = KnowledgeScope.Personal,
+                    context = childContext
+                }, "source");
+                Check("context provider enumeration is cached and bounded", providerCallsAfterFirstOptions > 0 &&
+                    providerCallsAfterFirstOptions <= 3 &&
+                    VerificationContextPresentationProvider.KnownContextsCalls == providerCallsAfterFirstOptions &&
+                    orderedContextOptions.SequenceEqual(repeatedContextOptions), ref passed, failures);
+                Check("throwing context provider is isolated", KnowledgeContextRegistry.ValueLabel(
+                    new KnowledgeContextKey("verification.region.throwing", "any"), DomainId, "source", pawn,
+                    KnowledgeScope.Personal) == null, ref passed, failures);
+                VerificationContextPresentationProvider.EmitLarge = true;
+                VerificationContextPresentationProvider.ResetCounters();
+                KnowledgeContextRegistry.RegisterPresentationProvider("verification.region",
+                    new VerificationContextPresentationProvider(), true);
+                IReadOnlyList<KnowledgeContextKey> largeProviderContexts = KnowledgeContextRegistry.KnownContexts(DomainId, "source",
+                    pawn, KnowledgeScope.Personal);
+                Check("large context provider is safely bounded", largeProviderContexts.Count <= 512 &&
+                    VerificationContextPresentationProvider.KnownContextsCalls <= 3, ref passed, failures);
+                VerificationContextPresentationProvider.EmitLarge = false;
+                KnowledgeContextRegistry.RegisterPresentationProvider("verification.region",
+                    new VerificationContextPresentationProvider(), true);
+                KnowledgeContextKey unauthorizedContext = new KnowledgeContextKey("verification.region", "not-authorized");
+                Check("unauthorized context never exposes stable id", KnowledgeContextRegistry.ValueLabel(unauthorizedContext,
+                    DomainId, "source", pawn, KnowledgeScope.Personal) == null &&
+                    KnowledgeBrowserLabels.ContextValue(unauthorizedContext, DomainId, "source", pawn, KnowledgeScope.Personal) !=
+                    unauthorizedContext.stableId, ref passed, failures);
                 IReadOnlyList<KnowledgeContextKey> cachedContextOptionsBefore = browserWindow.ContextOptionsForVerification(KnowledgeRegistry.Schema(DomainId));
                 KnowledgeContextKey cacheContext = new KnowledgeContextKey("verification.region", "cache-only");
                 Check("context option cache invalidates on new knowledge", Observe(pawn, "biology", cacheContext, false, true,
@@ -955,10 +1021,327 @@ namespace KnowledgeFramework
                     ref passed, failures);
                 Check("migration helper", KnowledgeMigrationService.ImportMinimum("verification-consumer", 1, DomainId, "source", pawn, 1f, 0f, 0f) &&
                     KnowledgeMigrationService.IsCommitted("verification-consumer", 1), ref passed, failures);
+
+                Check("migration unknown relation type", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-unknown-relation",
+                    version = 1,
+                    relations = new[] { MigrationRelation("verification.unknown", "child", "source") }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-unknown-relation", 1), ref passed, failures);
+                KnowledgeRelationService.RegisterType(new KnowledgeSubjectRelationTypeDef
+                {
+                    defName = "VerificationMissingInverse",
+                    stableId = "verification.missing-inverse",
+                    inverseTypeId = "verification.inverse-does-not-exist"
+                }, true);
+                Check("migration inverse type failure", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-inverse",
+                    version = 1,
+                    relations = new[] { MigrationRelation("verification.missing-inverse", "child", "source") }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-inverse", 1), ref passed, failures);
+                Check("migration relation cycle", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-cycle",
+                    version = 1,
+                    relations = new[] { MigrationRelation("verification.parent", "source", "child") }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-cycle", 1), ref passed, failures);
+                Check("migration invalid milestone", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-milestone",
+                    version = 1,
+                    milestones = new[]
+                    {
+                        new KnowledgeMilestoneConditionSample
+                        {
+                            domainId = DomainId,
+                            subjectId = "source",
+                            trackId = "progress",
+                            milestoneId = "established",
+                            conditionMet = true,
+                            value = float.NaN
+                        }
+                    }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-milestone", 1), ref passed, failures);
+                Check("migration failed subject registration", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-subject",
+                    version = 1,
+                    domainId = DomainId,
+                    subjects = new[] { new KnowledgeSubjectRegistration { id = "invalid\nsubject" } }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-subject", 1), ref passed, failures);
+                Check("migration invalid claim", !KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = "verification-migration-claim",
+                    version = 1,
+                    claims = new[]
+                    {
+                        new KnowledgeMeasurement
+                        {
+                            domainId = DomainId,
+                            subjectId = "source",
+                            facetId = "biology",
+                            claimId = "size",
+                            observer = pawn,
+                            value = KnowledgeClaimValue.Boolean(true)
+                        }
+                    }
+                }) && !KnowledgeMigrationService.IsCommitted("verification-migration-claim", 1), ref passed, failures);
+                string lateConsumer = "verification-migration-late";
+                float lateBefore = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                bool lateImport = KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = lateConsumer,
+                    version = 1,
+                    domainId = DomainId,
+                    subjectId = "source",
+                    pawn = pawn,
+                    personalKnowledge = lateBefore + 11f,
+                    milestones = new[]
+                    {
+                        new KnowledgeMilestoneConditionSample
+                        {
+                            domainId = DomainId,
+                            subjectId = "source",
+                            trackId = "progress",
+                            milestoneId = "established",
+                            conditionMet = false
+                        }
+                    }
+                });
+                float lateAfterFailure = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                Check("migration late failure remains uncommitted", !lateImport && !KnowledgeMigrationService.IsCommitted(lateConsumer, 1) &&
+                    lateAfterFailure >= lateBefore + 11f, ref passed, failures);
+                bool lateRetry = KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                {
+                    consumerId = lateConsumer,
+                    version = 1,
+                    domainId = DomainId,
+                    subjectId = "source",
+                    pawn = pawn,
+                    personalKnowledge = lateBefore + 11f
+                });
+                Check("migration retry after partial monotonic state", lateRetry && KnowledgeMigrationService.IsCommitted(lateConsumer, 1), ref passed, failures);
+                string successfulConsumer = "verification-migration-success";
+                KnowledgeConsumerMigration successfulMigration = new KnowledgeConsumerMigration
+                {
+                    consumerId = successfulConsumer,
+                    version = 1,
+                    domainId = DomainId,
+                    subjectId = "source",
+                    pawn = pawn,
+                    personalKnowledge = lateBefore + 13f,
+                    colonyKnowledge = 4f,
+                    expertise = 1f,
+                    eventCounts = new Dictionary<string, int> { { "migration", 2 } }
+                };
+                bool successfulImport = KnowledgeMigrationService.Import(successfulMigration);
+                float successfulAmount = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                bool successfulRetry = KnowledgeMigrationService.Import(successfulMigration);
+                float successfulRetryAmount = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                Check("migration successful import", successfulImport && KnowledgeMigrationService.IsCommitted(successfulConsumer, 1), ref passed, failures);
+                Check("migration successful import is idempotent", successfulRetry &&
+                    Math.Abs(successfulRetryAmount - successfulAmount) < 0.001f, ref passed, failures);
+                Check("migration commit occurs exactly once", component.ConsumerMigrationCountV3(successfulConsumer) == 1, ref passed, failures);
+                string aliasDomain = "verification-v3-alias-old";
+                string aliasSubject = "verification-v3-alias-old-subject";
+                string overrideOldSubject = "verification-v3-override-old";
+                string overrideCurrentSubject = "verification-v3-override-current";
+                KnowledgeContextKey aliasContext = new KnowledgeContextKey("verification.alias", "collision");
+                KnowledgeClaimStateRecord aliasClaim = component.ClaimV3(aliasDomain, aliasSubject, "biology", "size", pawn, false,
+                    aliasContext, true);
+                aliasClaim.measurements.Add(new KnowledgeMeasurementRecord
+                {
+                    domainId = aliasDomain,
+                    subjectId = aliasSubject,
+                    facetId = "biology",
+                    claimId = "size",
+                    observer = pawn,
+                    scope = (int)KnowledgeScope.Personal,
+                    valueType = (int)KnowledgeClaimValueType.Float,
+                    numericValue = 4f,
+                    quality = 1f,
+                    evidenceWeight = 1f,
+                    confidenceFactor = 1f,
+                    contextTypeId = aliasContext.typeId,
+                    contextId = aliasContext.stableId,
+                    tick = 10
+                });
+                KnowledgeClaimStateRecord canonicalClaim = component.ClaimV3(DomainId, "source", "biology", "size", pawn, false,
+                    aliasContext, true);
+                canonicalClaim.measurements.Add(new KnowledgeMeasurementRecord
+                {
+                    domainId = DomainId,
+                    subjectId = "source",
+                    facetId = "biology",
+                    claimId = "size",
+                    observer = pawn,
+                    scope = (int)KnowledgeScope.Personal,
+                    valueType = (int)KnowledgeClaimValueType.Float,
+                    numericValue = 8f,
+                    quality = 1f,
+                    evidenceWeight = 1f,
+                    confidenceFactor = 1f,
+                    contextTypeId = aliasContext.typeId,
+                    contextId = aliasContext.stableId,
+                    tick = 20
+                });
+                KnowledgeContextFacetStateRecord aliasFacet = component.ContextFacetV3(aliasDomain, aliasSubject, "biology", pawn, false,
+                    aliasContext, true);
+                aliasFacet.amount = 3f;
+                KnowledgeContextFacetStateRecord canonicalFacet = component.ContextFacetV3(DomainId, "source", "biology", pawn, false,
+                    aliasContext, true);
+                canonicalFacet.amount = 7f;
+                KnowledgeMilestoneStateRecord aliasMilestone = component.MilestoneV3(aliasDomain, aliasSubject, "progress", "established",
+                    pawn, aliasContext, true);
+                aliasMilestone.completed = true;
+                aliasMilestone.progress = 0.4f;
+                aliasMilestone.revision = 1;
+                KnowledgeMilestoneStateRecord canonicalMilestone = component.MilestoneV3(DomainId, "source", "progress", "established",
+                    pawn, aliasContext, true);
+                canonicalMilestone.progress = 0.8f;
+                canonicalMilestone.revision = 2;
+                KnowledgeStageStateRecord aliasStage = component.StageV3(aliasDomain, aliasSubject, pawn, false, aliasContext, true);
+                aliasStage.stageId = "verification-alias-old-stage";
+                aliasStage.lastTick = 10;
+                KnowledgeStageStateRecord canonicalStage = component.StageV3(DomainId, "source", pawn, false, aliasContext, true);
+                canonicalStage.stageId = "verification-alias-current-stage";
+                canonicalStage.lastTick = 20;
+                Check("alias relation type registration", KnowledgeRelationService.RegisterType(new KnowledgeSubjectRelationTypeDef
+                {
+                    defName = "VerificationAliasRelation",
+                    stableId = "verification.alias-relation"
+                }, true), ref passed, failures);
+                Check("alias relation records created", component.AddRelationV3(new KnowledgeSubjectRelation
+                {
+                    domainId = aliasDomain,
+                    fromSubjectId = aliasSubject,
+                    toDomainId = aliasDomain,
+                    toSubjectId = aliasSubject,
+                    relationTypeId = "verification.alias-relation",
+                    source = "legacy",
+                    confidence = 0.5f,
+                    tick = 10
+                }) && component.AddRelationV3(new KnowledgeSubjectRelation
+                {
+                    domainId = DomainId,
+                    fromSubjectId = "source",
+                    toDomainId = DomainId,
+                    toSubjectId = "source",
+                    relationTypeId = "verification.alias-relation",
+                    source = "canonical",
+                    confidence = 1f,
+                    tick = 20
+                }), ref passed, failures);
+                KnowledgeObservationDef aliasAccrualDefinition = KnowledgeRegistry.Schema(DomainId)?.Observation("legacy-unique");
+                string aliasAccrualKey = KnowledgeAccrualService.BuildKey(aliasDomain, aliasSubject, "identity", false,
+                    pawn?.thingIDNumber ?? 0, "alias-collision-source", "<global>", aliasAccrualDefinition?.accrualPolicy, "legacy-unique");
+                string canonicalAccrualKey = KnowledgeAccrualService.BuildKey(DomainId, "source", "identity", false,
+                    pawn?.thingIDNumber ?? 0, "alias-collision-source", "<global>", aliasAccrualDefinition?.accrualPolicy, "legacy-unique");
+                KnowledgeAccrualStateRecord aliasAccrual = component.AccrualV3(aliasAccrualKey, true);
+                aliasAccrual.domainId = aliasDomain;
+                aliasAccrual.subjectId = aliasSubject;
+                aliasAccrual.observationId = "legacy-unique";
+                aliasAccrual.policyNamespace = "legacy-unique";
+                aliasAccrual.facetId = "identity";
+                aliasAccrual.sourceInstanceId = "alias-collision-source";
+                aliasAccrual.keyFormatVersion = 2;
+                aliasAccrual.ownershipMetadataComplete = true;
+                aliasAccrual.count = 2;
+                KnowledgeAccrualStateRecord canonicalAccrual = component.AccrualV3(canonicalAccrualKey, true);
+                canonicalAccrual.domainId = DomainId;
+                canonicalAccrual.subjectId = "source";
+                canonicalAccrual.observationId = "legacy-unique";
+                canonicalAccrual.policyNamespace = "legacy-unique";
+                canonicalAccrual.facetId = "identity";
+                canonicalAccrual.sourceInstanceId = "alias-collision-source";
+                canonicalAccrual.keyFormatVersion = 2;
+                canonicalAccrual.ownershipMetadataComplete = true;
+                canonicalAccrual.count = 5;
+                KnowledgeSharedExpertiseStateRecord aliasExpertise = component.SharedExpertiseV3("verification.alias", aliasDomain,
+                    "collision", pawn, true);
+                aliasExpertise.amount = 2f;
+                KnowledgeSharedExpertiseStateRecord canonicalExpertise = component.SharedExpertiseV3("verification.alias", DomainId,
+                    "collision", pawn, true);
+                canonicalExpertise.amount = 5f;
+                component.PersistSubjectOverrideV3(aliasDomain, new KnowledgeSubjectRegistration
+                {
+                    id = overrideOldSubject,
+                    label = "Legacy override",
+                    applicableFacetIds = new[] { "biology" }
+                });
+                component.PersistSubjectOverrideV3(DomainId, new KnowledgeSubjectRegistration
+                {
+                    id = overrideCurrentSubject,
+                    label = "Canonical override",
+                    applicableFacetIds = new[] { "biology" }
+                });
+                component.CommitConsumerMigrationV3("verification-alias-preserved", 1);
+                int aliasMigrationCount = component.ConsumerMigrationCountV3("verification-alias-preserved");
+                Check("alias domain migration", KnowledgeRegistry.RegisterDomainAlias(aliasDomain, DomainId), ref passed, failures);
+                Check("alias subject migration", KnowledgeRegistry.RegisterSubjectAlias(DomainId, aliasSubject, "source"), ref passed, failures);
+                Check("alias override migration", KnowledgeRegistry.RegisterSubjectAlias(DomainId, overrideOldSubject, overrideCurrentSubject), ref passed, failures);
+                Check("alias before content registration", KnowledgeRegistry.RegisterSubjectAlias(DomainId, "verification-before-content-old",
+                    "verification-before-content-current") && KnowledgeRegistry.RegisterSubject(DomainId, new KnowledgeSubjectRegistration
+                    {
+                        id = "verification-before-content-current",
+                        label = "Registered after alias"
+                    }, new KnowledgeRegistrationOptions
+                    {
+                        source = "verification-v3-alias",
+                        priority = int.MaxValue,
+                        conflict = KnowledgeRegistrationConflict.Replace
+                    }) && KnowledgeRegistry.ResolveSubject(DomainId, "verification-before-content-old")?.id == "verification-before-content-current",
+                    ref passed, failures);
+                KnowledgeClaimStateRecord mergedAliasClaim = component.ClaimRecordsV3(DomainId, "source", pawn).FirstOrDefault(item => item != null &&
+                    item.facetId == "biology" && item.claimId == "size" && item.contextTypeId == aliasContext.typeId && item.contextId == aliasContext.stableId);
+                KnowledgeContextFacetStateRecord mergedAliasFacet = component.ContextFacetRecordsV3(DomainId, "source", "biology", pawn, false)
+                    .FirstOrDefault(item => item != null && item.contextTypeId == aliasContext.typeId && item.contextId == aliasContext.stableId);
+                KnowledgeMilestoneStateRecord mergedAliasMilestone = component.MilestoneRecordsV3(DomainId, "source", pawn).FirstOrDefault(item => item != null &&
+                    item.trackId == "progress" && item.milestoneId == "established" && item.contextTypeId == aliasContext.typeId && item.contextId == aliasContext.stableId);
+                KnowledgeStageStateRecord mergedAliasStage = component.StageRecordsV3(DomainId, "source", pawn, false).FirstOrDefault(item => item != null &&
+                    item.contextTypeId == aliasContext.typeId && item.contextId == aliasContext.stableId);
+                List<KnowledgeSubjectRelationStateRecord> mergedAliasRelations = component.RelationRecordsV3(DomainId, "source").Where(item => item != null &&
+                    item.relationTypeId == "verification.alias-relation").ToList();
+                List<KnowledgeAccrualStateRecord> mergedAliasAccruals = component.AccrualRecordsV3().Where(item => item != null &&
+                    item.domainId == DomainId && item.subjectId == "source" && item.policyNamespace == "legacy-unique" &&
+                    item.sourceInstanceId == "alias-collision-source").ToList();
+                Check("alias migration immediate records", mergedAliasClaim != null && component.ClaimRecordsV3(DomainId, "source", pawn)
+                    .Count(item => item != null && item.facetId == "biology" && item.claimId == "size" && item.contextTypeId == aliasContext.typeId &&
+                        item.contextId == aliasContext.stableId) == 1 && mergedAliasClaim.measurements.Count >= 2 &&
+                    mergedAliasClaim.measurements.All(item => item.domainId == DomainId && item.subjectId == "source") && mergedAliasFacet?.amount == 7f &&
+                    mergedAliasMilestone?.completed == true && mergedAliasMilestone.progress == 0.8f && mergedAliasStage != null &&
+                    mergedAliasStage.domainId == DomainId && mergedAliasStage.subjectId == "source" && mergedAliasRelations.Count == 1 &&
+                    mergedAliasAccruals.Count == 1 && mergedAliasAccruals[0].count == 5 && mergedAliasAccruals[0].legacyKey == aliasAccrualKey &&
+                    aliasMigrationCount == component.ConsumerMigrationCountV3("verification-alias-preserved") &&
+                    component.HasConsumerMigrationV3("verification-alias-preserved", 1), ref passed, failures);
+                Check("alias shared expertise merge", component.SharedExpertiseRecordsV3("verification.alias", pawn).Count(item => item != null &&
+                    item.domainId == DomainId && item.trackId == "collision") == 1 && component.SharedExpertiseRecordsV3("verification.alias", pawn)
+                    .FirstOrDefault(item => item != null && item.domainId == DomainId && item.trackId == "collision")?.amount == 5f,
+                    ref passed, failures);
+                Check("alias override merge", component.SubjectOverrideRecordsV3().Count(item => item != null && item.domainId == DomainId &&
+                    item.id == overrideCurrentSubject) == 1 && !component.SubjectOverrideRecordsV3().Any(item => item != null && item.domainId == DomainId &&
+                    item.id == overrideOldSubject) && KnowledgeRegistry.ResolveSubject(DomainId, overrideOldSubject)?.id == overrideCurrentSubject,
+                    ref passed, failures);
+                int aliasClaimCount = component.V3ClaimCount;
+                int aliasRelationCount = component.V3RelationCount;
+                int aliasAccrualCount = component.V3AccrualCount;
+                component.RebuildV3Indexes();
+                component.RebuildV3Indexes();
+                Check("alias rebuild is idempotent", component.V3ClaimCount == aliasClaimCount && component.V3RelationCount == aliasRelationCount &&
+                    component.V3AccrualCount == aliasAccrualCount && component.ClaimRecordsV3(DomainId, "source", pawn).Count(item => item != null &&
+                        item.contextTypeId == aliasContext.typeId && item.contextId == aliasContext.stableId) == 1 && component.RelationRecordsV3(DomainId, "source")
+                        .Count(item => item != null && item.relationTypeId == "verification.alias-relation") == 1, ref passed, failures);
                 bool ownedAccrual = component.AccrualRecordsV3().Any(item => item != null && item.domainId == DomainId);
                 component.RemoveDomainDataV3(DomainId);
-                Check("accrual ownership and domain cleanup", ownedAccrual && !component.AccrualRecordsV3().Any(item => item != null && item.domainId == DomainId),
-                    ref passed, failures);
+                bool aliasDomainClean = !component.ClaimRecordsV3(DomainId).Any() && !component.ContextFacetRecordsV3(DomainId, "source", "biology", pawn, false).Any() &&
+                    !component.MilestoneRecordsV3(DomainId).Any() && !component.StageRecordsV3(DomainId, "source", pawn, false).Any() &&
+                    !component.RelationRecordsV3(DomainId).Any() && !component.AccrualRecordsV3().Any(item => item != null &&
+                     (item.domainId == DomainId || item.domainId == aliasDomain || item.legacyKey == aliasAccrualKey)) &&
+                     !component.SubjectOverrideRecordsV3().Any(item => item != null && item.domainId == DomainId) &&
+                     !component.SharedExpertiseRecordsV3("verification.alias", pawn).Any(item => item != null && item.domainId == DomainId) &&
+                     KnowledgeRegistry.ResolveSubject(DomainId, overrideCurrentSubject) == null;
+                Check("accrual ownership and domain cleanup", ownedAccrual && aliasDomainClean, ref passed, failures);
             }
             catch (Exception exception)
             {
@@ -1036,9 +1419,10 @@ namespace KnowledgeFramework
             {
                 new KnowledgeSubjectRegistration { id = "one", label = "One", applicableFacetIds = new[] { "a" } },
                 new KnowledgeSubjectRegistration { id = "many", label = "Many", applicableFacetIds = new[] { "a", "b" } },
-                new KnowledgeSubjectRegistration { id = "empty", label = "Empty", applicableFacetIds = new[] { "a", "empty" } },
-                new KnowledgeSubjectRegistration { id = "confidence", label = "Confidence", applicableFacetIds = new[] { "a", "b" } },
-                new KnowledgeSubjectRegistration { id = "context-only", label = "Context only", applicableFacetIds = new[] { "a", "b" } }
+                 new KnowledgeSubjectRegistration { id = "empty", label = "Empty", applicableFacetIds = new[] { "a", "empty" } },
+                 new KnowledgeSubjectRegistration { id = "confidence", label = "Confidence", applicableFacetIds = new[] { "a", "b" } },
+                 new KnowledgeSubjectRegistration { id = "context-only", label = "Context only", applicableFacetIds = new[] { "a", "b" } },
+                 new KnowledgeSubjectRegistration { id = "global-context-only", label = "Global context only", applicableFacetIds = new[] { "a" } }
             };
             return new KnowledgeDomainRegistration
             {
@@ -1051,9 +1435,17 @@ namespace KnowledgeFramework
                     new KnowledgeStageDef { defName = "base", order = 0 },
                     new KnowledgeStageDef { defName = "balanced", order = 1, minimumKnowledge = 75f, minimumConfidence = 0.8f },
                     exactRequirements,
-                    new KnowledgeStageDef
-                    {
-                        defName = "contextual",
+                     new KnowledgeStageDef
+                     {
+                         defName = "global-contextual",
+                         order = 2,
+                         minimumKnowledge = 75f,
+                         minimumConfidence = 0.8f,
+                         contextSensitive = true
+                     },
+                     new KnowledgeStageDef
+                     {
+                         defName = "contextual",
                         order = 3,
                         minimumKnowledge = 75f,
                         minimumConfidence = 0.8f,
@@ -1132,18 +1524,38 @@ namespace KnowledgeFramework
             tick = tick
         };
 
+        private static KnowledgeSubjectRelation MigrationRelation(string relationTypeId, string fromSubjectId, string toSubjectId) => new KnowledgeSubjectRelation
+        {
+            domainId = DomainId,
+            fromSubjectId = fromSubjectId,
+            toDomainId = DomainId,
+            toSubjectId = toSubjectId,
+            relationTypeId = relationTypeId,
+            confidence = 1f
+        };
+
         private sealed class VerificationContextPresentationProvider : IKnowledgeContextPresentationProvider
         {
+            internal static bool EmitLarge;
+            internal static int KnownContextsCalls { get; private set; }
+
+            internal static void ResetCounters() => KnownContextsCalls = 0;
+
             public IEnumerable<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
             {
+                KnownContextsCalls++;
                 if (domainId != DomainId && domainId != AggregationDomainId) return Enumerable.Empty<KnowledgeContextKey>();
-                return new[]
+                IEnumerable<KnowledgeContextKey> values = new[]
                 {
                     new KnowledgeContextKey("verification.region", "alpha"),
                     new KnowledgeContextKey("verification.region", "shared"),
                     new KnowledgeContextKey("verification.region", "aggregation"),
                     new KnowledgeContextKey("verification.region.child", "shared")
                 };
+                if (EmitLarge)
+                    values = values.Concat(Enumerable.Range(0, 2048).Select(index =>
+                        new KnowledgeContextKey("verification.region", "large-" + index.ToString("D4"))));
+                return values;
             }
 
             public string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
@@ -1155,6 +1567,19 @@ namespace KnowledgeFramework
                     case "aggregation": return "Aggregation region";
                     default: return null;
                 }
+            }
+        }
+
+        private sealed class ThrowingContextPresentationProvider : IKnowledgeContextPresentationProvider
+        {
+            public IEnumerable<KnowledgeContextKey> KnownContexts(string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+            {
+                throw new InvalidOperationException("verification provider failure");
+            }
+
+            public string ValueLabel(KnowledgeContextKey context, string domainId, string subjectId, Pawn pawn, KnowledgeScope scope)
+            {
+                throw new InvalidOperationException("verification label failure");
             }
         }
 

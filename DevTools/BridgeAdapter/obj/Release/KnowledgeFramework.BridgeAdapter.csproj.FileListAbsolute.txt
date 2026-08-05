@@ -1,6 +1,0 @@
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\bin\Release\KnowledgeFramework.BridgeAdapter.dll
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\obj\Release\KnowledgeFramework.BridgeAdapter.csproj.AssemblyReference.cache
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\obj\Release\KnowledgeFramework.BridgeAdapter.GeneratedMSBuildEditorConfig.editorconfig
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\obj\Release\KnowledgeFramework.BridgeAdapter.csproj.CoreCompileInputs.cache
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\Build\KnowledgeFramework.BridgeAdapter.20260805092747006.dll
-C:\Games\Steam\steamapps\common\RimWorld\Mods\KnowledgeFramework\DevTools\BridgeAdapter\obj\Release\KnowledgeFramework.BridgeAdapter.20260805092747006.dll

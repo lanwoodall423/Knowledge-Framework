@@ -1,0 +1,14 @@
+<Project>
+  <PropertyGroup>
+    <KnowledgeFrameworkReleaseVersion>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</KnowledgeFrameworkReleaseVersion>
+    <Version>$(KnowledgeFrameworkReleaseVersion)</Version>
+    <PackageVersion>$(KnowledgeFrameworkReleaseVersion)</PackageVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <AssemblyVersion Condition="'$(AssemblyVersion)' == ''">$([System.String]::Copy('$(KnowledgeFrameworkReleaseVersion)').Split('-')[0]).0</AssemblyVersion>
+    <FileVersion Condition="'$(FileVersion)' == ''">$([System.String]::Copy('$(KnowledgeFrameworkReleaseVersion)').Split('-')[0]).0</FileVersion>
+    <InformationalVersion Condition="'$(InformationalVersion)' == ''">$(KnowledgeFrameworkReleaseVersion)</InformationalVersion>
+    <AssemblyTitle Condition="'$(AssemblyTitle)' == ''">Knowledge Framework</AssemblyTitle>
+    <Product Condition="'$(Product)' == ''">Knowledge Framework</Product>
+    <Company Condition="'$(Company)' == ''">Lan</Company>
+  </PropertyGroup>
+</Project>
