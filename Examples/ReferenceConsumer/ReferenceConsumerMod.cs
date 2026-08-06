@@ -28,6 +28,7 @@ namespace ReferenceConsumer
         public const string RelationTypeId = "reference.observed-from";
         public const string ConsumerId = "lan.knowledgeframework.referenceconsumer";
         public const string ConsumerDomainId = "reference.consumer-runtime";
+        private static bool initialized;
 
         public static bool IsCompatible => KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TypedMeasurementsCapability) &&
             KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.StructuralRelationsCapability) &&
@@ -61,6 +62,7 @@ namespace ReferenceConsumer
         {
             try
             {
+                if (initialized) return;
                 if (!IsCompatible)
                 {
                     Log.Warning("[ReferenceConsumer] Knowledge Framework V3 capabilities are unavailable; optional content is disabled.");
@@ -88,7 +90,7 @@ namespace ReferenceConsumer
                     Log.Warning("[ReferenceConsumer] Domain Def is unavailable; the reference consumer will remain inactive.");
                     return;
                 }
-                KnowledgeRegistry.RegisterSubject(DomainId, new KnowledgeSubjectRegistration
+                bool subjectRegistered = KnowledgeRegistry.RegisterSubject(DomainId, new KnowledgeSubjectRegistration
                 {
                     id = DynamicSubjectId,
                     label = "ReferenceConsumer_DynamicSubject".Translate(),
@@ -103,6 +105,12 @@ namespace ReferenceConsumer
                     priority = 100,
                     conflict = KnowledgeRegistrationConflict.Reject
                 });
+                if (!subjectRegistered && KnowledgeRegistry.ResolveSubject(DomainId, DynamicSubjectId) == null)
+                {
+                    Log.Warning("[ReferenceConsumer] Dynamic subject registration was unavailable; optional content will retry on next use.");
+                    return;
+                }
+                initialized = true;
             }
             catch (Exception exception)
             {
@@ -110,9 +118,15 @@ namespace ReferenceConsumer
             }
         }
 
+        private static bool EnsureInitialized()
+        {
+            if (!initialized) Initialize();
+            return initialized;
+        }
+
         public static KnowledgeTransactionResult Observe(Pawn observer)
         {
-            if (observer == null || KnowledgeRegistry.Schema(DomainId) == null) return null;
+            if (observer == null || !EnsureInitialized()) return null;
             KnowledgeContextKey context = new KnowledgeContextKey(ContextTypeId, ContextId);
             return KnowledgeEngine.Submit(new KnowledgeObservation
             {
@@ -157,7 +171,7 @@ namespace ReferenceConsumer
 
         public static bool ReportAndDocument(Pawn observer)
         {
-            if (observer == null || KnowledgeRegistry.Schema(DomainId) == null) return false;
+            if (observer == null || !EnsureInitialized()) return false;
             bool reported = KnowledgeTransmission.Report(DomainId, DynamicSubjectId, observer, ConsumerId);
             bool documented = KnowledgeTransmission.Document(DomainId, DynamicSubjectId, observer, ConsumerId);
             return reported && documented;
@@ -165,14 +179,14 @@ namespace ReferenceConsumer
 
         public static bool ConfirmMilestone(Pawn pawn)
         {
-            if (pawn == null || KnowledgeRegistry.Schema(DomainId) == null) return false;
+            if (pawn == null || !EnsureInitialized()) return false;
             return KnowledgeMilestoneService.Confirm(DomainId, DynamicSubjectId, MilestoneTrackId, MilestoneId, pawn,
                 new KnowledgeContextKey(ContextTypeId, ContextId));
         }
 
         public static bool AddStructuralRelation()
         {
-            if (KnowledgeRegistry.Schema(DomainId) == null) return false;
+            if (!EnsureInitialized()) return false;
             return KnowledgeRelationService.Add(new KnowledgeSubjectRelation
             {
                 domainId = DomainId,
@@ -190,7 +204,7 @@ namespace ReferenceConsumer
 
         public static KnowledgeEffectResult QueryTypedEffect(Pawn pawn)
         {
-            if (pawn == null || KnowledgeRegistry.Schema(DomainId) == null) return null;
+            if (pawn == null || !EnsureInitialized()) return null;
             return KnowledgeEffects.Query(new KnowledgeEffectQuery
             {
                 domainId = DomainId,
@@ -205,22 +219,28 @@ namespace ReferenceConsumer
             });
         }
 
-        public static KnowledgeMilestoneState Milestone(Pawn pawn) => pawn == null ? null :
-            KnowledgeMilestoneService.State(DomainId, DynamicSubjectId, MilestoneTrackId, MilestoneId, pawn,
+        public static KnowledgeMilestoneState Milestone(Pawn pawn)
+        {
+            if (pawn == null || !EnsureInitialized()) return null;
+            return KnowledgeMilestoneService.State(DomainId, DynamicSubjectId, MilestoneTrackId, MilestoneId, pawn,
                 new KnowledgeContextKey(ContextTypeId, ContextId));
+        }
 
-        public static KnowledgeInsightProgress OptionalInsight(Pawn pawn) => pawn == null ? null :
-            KnowledgeInsightService.Progress("missing-optional-insight", DomainId, DynamicSubjectId, pawn);
+        public static KnowledgeInsightProgress OptionalInsight(Pawn pawn)
+        {
+            if (pawn == null || !EnsureInitialized()) return null;
+            return KnowledgeInsightService.Progress("missing-optional-insight", DomainId, DynamicSubjectId, pawn);
+        }
 
         public static void OpenGuide(Pawn pawn)
         {
-            if (pawn == null || KnowledgeRegistry.Schema(DomainId) == null) return;
+            if (pawn == null || !EnsureInitialized()) return;
             KnowledgeV2Ui.Open(DomainId, pawn, DynamicSubjectId, new KnowledgeContextKey(ContextTypeId, ContextId));
         }
 
         public static bool MigrateConsumer(Pawn pawn)
         {
-            if (pawn == null || KnowledgeRegistry.Schema(DomainId) == null) return false;
+            if (pawn == null || !EnsureInitialized()) return false;
             return KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
             {
                 consumerId = ConsumerId,
@@ -234,6 +254,7 @@ namespace ReferenceConsumer
             });
         }
 
-        public static bool InvalidateObservedSpecimen() => KnowledgeConsumerApi.InvalidateSubject(DomainId, DynamicSubjectId).Success;
+        public static bool InvalidateObservedSpecimen() => EnsureInitialized() &&
+            KnowledgeConsumerApi.InvalidateSubject(DomainId, DynamicSubjectId).Success;
     }
 }

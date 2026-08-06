@@ -1,6 +1,10 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Verse;
 
@@ -201,6 +205,10 @@ namespace KnowledgeFramework
                     KnowledgeDomainOwnerRelation.None, readiness, domainId, requestedOwner, null,
                     options.priority, 0, false);
             }
+            if (!KnowledgeRegistry.ValidateSchemaForConsumer(requestedSchema))
+                return new KnowledgeDomainRegistrationInspection(KnowledgeDomainRegistrationState.InvalidRequest,
+                    KnowledgeDomainOwnerRelation.None, readiness, domainId, requestedOwner, null,
+                    options.priority, 0, false);
 
             KnowledgeSchema existing = KnowledgeRegistry.Schema(domainId);
             if (existing == null)
@@ -319,28 +327,112 @@ namespace KnowledgeFramework
 
         private static bool ValidId(string value) => !value.NullOrEmpty() && value.Trim() == value && !value.Contains("\n");
 
-        private static string SchemaCompatibilityKey(KnowledgeSchema schema)
+        private static string SchemaCompatibilityKey(KnowledgeSchema schema) => schema?.compatibilityKey ?? string.Empty;
+    }
+
+    internal static class KnowledgeSchemaCompatibility
+    {
+        public static string Key(KnowledgeDomainRegistration registration)
         {
             StringBuilder builder = new StringBuilder();
-            builder.Append(schema.id).Append('|').Append(schema.label).Append('|').Append(schema.description).Append('|')
-                .Append(schema.uncertaintyEnabled).Append('|').Append(schema.familiarityEnabled).Append('|')
-                .Append((int)schema.sharingModel).Append('|').Append((int)schema.stageAggregationMode).Append('|')
-                .Append(schema.sortOrder).Append('|').Append(schema.provenanceLimit).Append('|').Append(schema.evidenceAggregateLimit);
-            AppendIds(builder, schema.facets.Select(value => value.id));
-            AppendIds(builder, schema.stages.Select(value => value.id));
-            AppendIds(builder, schema.expertiseTracks.Select(value => value.id));
-            AppendIds(builder, schema.observations.Select(value => value.StableId));
-            AppendIds(builder, schema.claims.Select(value => value.StableId));
-            AppendIds(builder, schema.archetypes.Select(value => value.StableId));
-            builder.Append('|').Append(schema.reveals.Count).Append('|').Append(schema.effects.Count).Append('|')
-                .Append(schema.insights.Count).Append('|').Append(schema.relationships.Count).Append('|')
-                .Append(schema.milestoneTracks.Count).Append('|').Append(schema.expertiseNamespaces.Count);
+            AppendValue(builder, registration, new HashSet<object>(ReferenceComparer.Instance));
             return builder.ToString();
         }
 
-        private static void AppendIds(StringBuilder builder, IEnumerable<string> values)
+        private static void AppendValue(StringBuilder builder, object value, HashSet<object> active)
         {
-            builder.Append('|').Append(string.Join(",", (values ?? Enumerable.Empty<string>()).OrderBy(value => value, StringComparer.Ordinal)));
+            if (value == null)
+            {
+                builder.Append("<null>");
+                return;
+            }
+            if (value is string text)
+            {
+                builder.Append("s:").Append(text.Length).Append(':').Append(text);
+                return;
+            }
+            Type type = value.GetType();
+            if (type.IsEnum)
+            {
+                builder.Append("e:").Append(type.FullName).Append(':').Append(Convert.ToInt64(value, CultureInfo.InvariantCulture));
+                return;
+            }
+            if (type.IsPrimitive || value is decimal)
+            {
+                builder.Append("p:").Append(type.FullName).Append(':')
+                    .Append(Convert.ToString(value, CultureInfo.InvariantCulture));
+                return;
+            }
+            if (value is Delegate callback)
+            {
+                MethodInfo method = callback.Method;
+                builder.Append("d:").Append(type.FullName).Append(':')
+                    .Append(method.DeclaringType?.FullName).Append(':').Append(method.Name);
+                return;
+            }
+            if (value is IDictionary dictionary)
+            {
+                List<KeyValuePair<string, object>> entries = new List<KeyValuePair<string, object>>();
+                foreach (DictionaryEntry entry in dictionary)
+                {
+                    StringBuilder key = new StringBuilder();
+                    AppendValue(key, entry.Key, new HashSet<object>(ReferenceComparer.Instance));
+                    entries.Add(new KeyValuePair<string, object>(key.ToString(), entry.Value));
+                }
+                foreach (KeyValuePair<string, object> entry in entries.OrderBy(item => item.Key, StringComparer.Ordinal))
+                {
+                    builder.Append("k:").Append(entry.Key).Append('=');
+                    AppendValue(builder, entry.Value, active);
+                }
+                return;
+            }
+            if (value is IEnumerable sequence)
+            {
+                builder.Append("[");
+                foreach (object item in sequence) AppendValue(builder, item, active);
+                builder.Append("]");
+                return;
+            }
+            if (!active.Add(value))
+            {
+                builder.Append("<cycle:").Append(type.FullName).Append('>');
+                return;
+            }
+            builder.Append("o:").Append(type.FullName).Append('{');
+            foreach (FieldInfo field in Fields(type))
+            {
+                if (!Include(field)) continue;
+                builder.Append(field.Name).Append('=');
+                AppendValue(builder, field.GetValue(value), active);
+                builder.Append(';');
+            }
+            builder.Append('}');
+            active.Remove(value);
+        }
+
+        private static IEnumerable<FieldInfo> Fields(Type type)
+        {
+            for (Type current = type; current != null && current != typeof(object); current = current.BaseType)
+                foreach (FieldInfo field in current.GetFields(BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly)
+                    .OrderBy(item => item.Name, StringComparer.Ordinal)) yield return field;
+        }
+
+        private static bool Include(FieldInfo field)
+        {
+            if (field.IsStatic) return false;
+            if (field.Name == "modContentPack" || field.Name == "shortHash" || field.Name == "index" ||
+                field.Name == "postLoadActions" || field.Name == "specialDisplayStats") return false;
+            Type type = field.FieldType;
+            return type == typeof(string) || type.IsPrimitive || type.IsEnum || type == typeof(decimal) ||
+                typeof(Delegate).IsAssignableFrom(type) || typeof(IEnumerable).IsAssignableFrom(type) ||
+                type.Namespace != null && type.Namespace.StartsWith("KnowledgeFramework", StringComparison.Ordinal);
+        }
+
+        private sealed class ReferenceComparer : IEqualityComparer<object>
+        {
+            internal static readonly ReferenceComparer Instance = new ReferenceComparer();
+            public new bool Equals(object left, object right) => ReferenceEquals(left, right);
+            public int GetHashCode(object value) => RuntimeHelpers.GetHashCode(value);
         }
     }
 

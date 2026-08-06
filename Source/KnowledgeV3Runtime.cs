@@ -24,7 +24,43 @@ namespace KnowledgeFramework
             new Dictionary<string, PresentationSnapshot>(StringComparer.Ordinal);
         private static int revision;
 
+        internal sealed class RegistrationState
+        {
+            internal readonly Dictionary<string, KnowledgeContextTypeDef> types;
+            internal readonly Dictionary<string, IKnowledgeContextResolver> resolvers;
+            internal readonly Dictionary<string, IKnowledgeContextPresentationProvider> providers;
+            internal readonly int revision;
+
+            internal RegistrationState(Dictionary<string, KnowledgeContextTypeDef> types,
+                Dictionary<string, IKnowledgeContextResolver> resolvers,
+                Dictionary<string, IKnowledgeContextPresentationProvider> providers, int revision)
+            {
+                this.types = types;
+                this.resolvers = resolvers;
+                this.providers = providers;
+                this.revision = revision;
+            }
+        }
+
         internal static int Revision => revision;
+
+        internal static RegistrationState CaptureRegistrationState() => new RegistrationState(
+            new Dictionary<string, KnowledgeContextTypeDef>(Types, StringComparer.Ordinal),
+            new Dictionary<string, IKnowledgeContextResolver>(Resolvers, StringComparer.Ordinal),
+            new Dictionary<string, IKnowledgeContextPresentationProvider>(PresentationProviders, StringComparer.Ordinal), revision);
+
+        internal static void RestoreRegistrationState(RegistrationState state)
+        {
+            if (state == null) return;
+            Types.Clear();
+            foreach (KeyValuePair<string, KnowledgeContextTypeDef> pair in state.types) Types[pair.Key] = pair.Value;
+            Resolvers.Clear();
+            foreach (KeyValuePair<string, IKnowledgeContextResolver> pair in state.resolvers) Resolvers[pair.Key] = pair.Value;
+            PresentationProviders.Clear();
+            foreach (KeyValuePair<string, IKnowledgeContextPresentationProvider> pair in state.providers) PresentationProviders[pair.Key] = pair.Value;
+            PresentationSnapshots.Clear();
+            revision = state.revision;
+        }
 
         internal sealed class PresentationSnapshot
         {

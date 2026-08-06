@@ -199,6 +199,22 @@ namespace KnowledgeFramework
     {
         private static readonly Dictionary<string, KnowledgeSubjectRelationTypeDef> Types = new Dictionary<string, KnowledgeSubjectRelationTypeDef>(StringComparer.Ordinal);
 
+        internal sealed class RegistrationState
+        {
+            internal readonly Dictionary<string, KnowledgeSubjectRelationTypeDef> types;
+            internal RegistrationState(Dictionary<string, KnowledgeSubjectRelationTypeDef> types) { this.types = types; }
+        }
+
+        internal static RegistrationState CaptureRegistrationState() => new RegistrationState(
+            new Dictionary<string, KnowledgeSubjectRelationTypeDef>(Types, StringComparer.Ordinal));
+
+        internal static void RestoreRegistrationState(RegistrationState state)
+        {
+            if (state == null) return;
+            Types.Clear();
+            foreach (KeyValuePair<string, KnowledgeSubjectRelationTypeDef> pair in state.types) Types[pair.Key] = pair.Value;
+        }
+
         public static bool RegisterType(KnowledgeSubjectRelationTypeDef definition, bool replace = false)
         {
             if (definition == null || definition.StableId.NullOrEmpty() || Types.ContainsKey(definition.StableId) && !replace) return false;
@@ -317,6 +333,22 @@ namespace KnowledgeFramework
     public static class KnowledgeSharedExpertiseService
     {
         private static readonly Dictionary<string, KnowledgeExpertiseNamespaceDef> Namespaces = new Dictionary<string, KnowledgeExpertiseNamespaceDef>(StringComparer.Ordinal);
+
+        internal sealed class RegistrationState
+        {
+            internal readonly Dictionary<string, KnowledgeExpertiseNamespaceDef> namespaces;
+            internal RegistrationState(Dictionary<string, KnowledgeExpertiseNamespaceDef> namespaces) { this.namespaces = namespaces; }
+        }
+
+        internal static RegistrationState CaptureRegistrationState() => new RegistrationState(
+            new Dictionary<string, KnowledgeExpertiseNamespaceDef>(Namespaces, StringComparer.Ordinal));
+
+        internal static void RestoreRegistrationState(RegistrationState state)
+        {
+            if (state == null) return;
+            Namespaces.Clear();
+            foreach (KeyValuePair<string, KnowledgeExpertiseNamespaceDef> pair in state.namespaces) Namespaces[pair.Key] = pair.Value;
+        }
 
         public static bool RegisterNamespace(KnowledgeExpertiseNamespaceDef definition, bool replace = false)
         {

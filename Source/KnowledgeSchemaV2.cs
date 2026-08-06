@@ -212,6 +212,8 @@ namespace KnowledgeFramework
         public readonly int evidenceAggregateLimit;
         public readonly int priority;
         public readonly string source;
+        internal string compatibilityKey;
+        private readonly KnowledgeDomainRegistration compatibilityRegistration;
         public readonly IReadOnlyList<KnowledgeFacetSchema> facets;
         public readonly IReadOnlyList<KnowledgeStageSchema> stages;
         public readonly IReadOnlyList<KnowledgeExpertiseTrackSchema> expertiseTracks;
@@ -237,6 +239,8 @@ namespace KnowledgeFramework
 
         internal KnowledgeSchema(KnowledgeDomainRegistration value, int priority, string source)
         {
+            compatibilityRegistration = value;
+            compatibilityKey = KnowledgeSchemaCompatibility.Key(value);
             id = value.id;
             label = value.label ?? value.id;
             description = value.description ?? string.Empty;
@@ -282,6 +286,8 @@ namespace KnowledgeFramework
                 .Where(group => !group.Key.NullOrEmpty())
                 .ToDictionary(group => group.Key, group => group.First(), StringComparer.Ordinal);
         }
+
+        internal void RefreshCompatibilityKey() => compatibilityKey = KnowledgeSchemaCompatibility.Key(compatibilityRegistration);
 
         internal static KnowledgeSchema FromDef(KnowledgeDomainDef def)
         {

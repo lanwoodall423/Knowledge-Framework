@@ -64,6 +64,31 @@ namespace KnowledgeFramework
             Check("readiness before initialization", readiness.state == KnowledgeFrameworkReadinessState.Unavailable ||
                 readiness.state == KnowledgeFrameworkReadinessState.NotInitialized || readiness.state == KnowledgeFrameworkReadinessState.Ready,
                 ref passed, failures);
+            KnowledgeDomainRegistration compatibilityBase = new KnowledgeDomainRegistration
+            {
+                id = "verification.compatibility",
+                stageAggregationMode = KnowledgeStageAggregationMode.Balanced,
+                facets = new[] { new KnowledgeFacetDef { stableId = "compatibility-facet" } },
+                stages = new[] { new KnowledgeStageDef { defName = "compatibility-stage", order = 1, minimumKnowledge = 10f } }
+            };
+            KnowledgeDomainRegistration compatibilityChanged = new KnowledgeDomainRegistration
+            {
+                id = "verification.compatibility",
+                stageAggregationMode = KnowledgeStageAggregationMode.Balanced,
+                facets = new[] { new KnowledgeFacetDef { stableId = "compatibility-facet" } },
+                stages = new[] { new KnowledgeStageDef { defName = "compatibility-stage", order = 1, minimumKnowledge = 11f } }
+            };
+            Check("consumer compatibility captures semantic schema fields",
+                KnowledgeSchemaCompatibility.Key(compatibilityBase) != KnowledgeSchemaCompatibility.Key(compatibilityChanged), ref passed, failures);
+            KnowledgeDomainRegistration invalidCompatibility = new KnowledgeDomainRegistration
+            {
+                id = "verification.invalid-compatibility",
+                stageAggregationMode = KnowledgeStageAggregationMode.Balanced,
+                stages = new[] { new KnowledgeStageDef { defName = "invalid-stage", order = 1, minimumKnowledge = 101f } }
+            };
+            Check("consumer inspection rejects invalid schema shape",
+                KnowledgeConsumerApi.InspectDomainRegistration(invalidCompatibility).state == KnowledgeDomainRegistrationState.InvalidRequest,
+                ref passed, failures);
             string[] consumerCapabilities =
             {
                 KnowledgeFrameworkApi.TypedMeasurementsCapability,

@@ -39,6 +39,119 @@ namespace KnowledgeFramework
         private static bool defsBuildInProgress;
         private static int revision;
 
+        private sealed class DefBuildState
+        {
+            internal readonly Dictionary<string, KnowledgeSchema> schemas;
+            internal readonly Dictionary<string, KnowledgeSubjectSnapshot> staticSubjects;
+            internal readonly Dictionary<string, SubjectCacheEntry> dynamicSubjects;
+            internal readonly Dictionary<string, KnowledgeSubjectRegistration> overrides;
+            internal readonly HashSet<string> persistedOverrideKeys;
+            internal readonly Dictionary<string, SubjectRegistrationMetadata> sources;
+            internal readonly List<KnowledgeValidationIssue> issues;
+            internal readonly HashSet<string> issueKeys;
+            internal readonly Dictionary<string, List<KnowledgeInsightDef>> insightsByDependency;
+            internal readonly Dictionary<string, List<KnowledgeRelationshipDef>> relationshipsByTarget;
+            internal readonly IReadOnlyCollection<KnowledgeSchema> schemaSnapshot;
+            internal readonly bool defsBuilt;
+            internal readonly int revision;
+            internal readonly KnowledgeContextRegistry.RegistrationState contextState;
+            internal readonly KnowledgeRelationService.RegistrationState relationState;
+            internal readonly KnowledgeSharedExpertiseService.RegistrationState expertiseState;
+
+            internal DefBuildState(Dictionary<string, KnowledgeSchema> schemas,
+                Dictionary<string, KnowledgeSubjectSnapshot> staticSubjects,
+                Dictionary<string, SubjectCacheEntry> dynamicSubjects,
+                Dictionary<string, KnowledgeSubjectRegistration> overrides,
+                HashSet<string> persistedOverrideKeys,
+                Dictionary<string, SubjectRegistrationMetadata> sources,
+                List<KnowledgeValidationIssue> issues, HashSet<string> issueKeys,
+                Dictionary<string, List<KnowledgeInsightDef>> insightsByDependency,
+                Dictionary<string, List<KnowledgeRelationshipDef>> relationshipsByTarget,
+                IReadOnlyCollection<KnowledgeSchema> schemaSnapshot, bool defsBuilt, int revision,
+                KnowledgeContextRegistry.RegistrationState contextState,
+                KnowledgeRelationService.RegistrationState relationState,
+                KnowledgeSharedExpertiseService.RegistrationState expertiseState)
+            {
+                this.schemas = schemas;
+                this.staticSubjects = staticSubjects;
+                this.dynamicSubjects = dynamicSubjects;
+                this.overrides = overrides;
+                this.persistedOverrideKeys = persistedOverrideKeys;
+                this.sources = sources;
+                this.issues = issues;
+                this.issueKeys = issueKeys;
+                this.insightsByDependency = insightsByDependency;
+                this.relationshipsByTarget = relationshipsByTarget;
+                this.schemaSnapshot = schemaSnapshot;
+                this.defsBuilt = defsBuilt;
+                this.revision = revision;
+                this.contextState = contextState;
+                this.relationState = relationState;
+                this.expertiseState = expertiseState;
+            }
+        }
+
+        private static DefBuildState CaptureDefBuildState()
+        {
+            return new DefBuildState(
+                new Dictionary<string, KnowledgeSchema>(Schemas, StringComparer.Ordinal),
+                new Dictionary<string, KnowledgeSubjectSnapshot>(StaticSubjects, StringComparer.Ordinal),
+                DynamicSubjects.ToDictionary(pair => pair.Key, pair => new SubjectCacheEntry
+                {
+                    value = pair.Value.value,
+                    revision = pair.Value.revision,
+                    lastAccess = pair.Value.lastAccess
+                }, StringComparer.Ordinal),
+                new Dictionary<string, KnowledgeSubjectRegistration>(SubjectOverrides, StringComparer.Ordinal),
+                new HashSet<string>(PersistedSubjectOverrideKeys, StringComparer.Ordinal),
+                SubjectRegistrationSources.ToDictionary(pair => pair.Key, pair => new SubjectRegistrationMetadata
+                {
+                    priority = pair.Value.priority,
+                    source = pair.Value.source
+                }, StringComparer.Ordinal),
+                Issues.ToList(), new HashSet<string>(IssueKeys, StringComparer.Ordinal),
+                InsightsByDependency.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
+                RelationshipsByTarget.ToDictionary(pair => pair.Key, pair => pair.Value.ToList(), StringComparer.Ordinal),
+                schemaSnapshot, defsBuilt, revision,
+                KnowledgeContextRegistry.CaptureRegistrationState(),
+                KnowledgeRelationService.CaptureRegistrationState(),
+                KnowledgeSharedExpertiseService.CaptureRegistrationState());
+        }
+
+        private static void RestoreDefBuildState(DefBuildState state)
+        {
+            if (state == null) return;
+            Schemas.Clear();
+            foreach (KeyValuePair<string, KnowledgeSchema> pair in state.schemas) Schemas[pair.Key] = pair.Value;
+            StaticSubjects.Clear();
+            foreach (KeyValuePair<string, KnowledgeSubjectSnapshot> pair in state.staticSubjects) StaticSubjects[pair.Key] = pair.Value;
+            DynamicSubjects.Clear();
+            foreach (KeyValuePair<string, SubjectCacheEntry> pair in state.dynamicSubjects) DynamicSubjects[pair.Key] = pair.Value;
+            SubjectOverrides.Clear();
+            foreach (KeyValuePair<string, KnowledgeSubjectRegistration> pair in state.overrides) SubjectOverrides[pair.Key] = pair.Value;
+            PersistedSubjectOverrideKeys.Clear();
+            foreach (string key in state.persistedOverrideKeys) PersistedSubjectOverrideKeys.Add(key);
+            SubjectRegistrationSources.Clear();
+            foreach (KeyValuePair<string, SubjectRegistrationMetadata> pair in state.sources) SubjectRegistrationSources[pair.Key] = pair.Value;
+            Issues.Clear();
+            Issues.AddRange(state.issues);
+            IssueKeys.Clear();
+            foreach (string key in state.issueKeys) IssueKeys.Add(key);
+            InsightsByDependency.Clear();
+            foreach (KeyValuePair<string, List<KnowledgeInsightDef>> pair in state.insightsByDependency)
+                InsightsByDependency[pair.Key] = pair.Value.ToList();
+            RelationshipsByTarget.Clear();
+            foreach (KeyValuePair<string, List<KnowledgeRelationshipDef>> pair in state.relationshipsByTarget)
+                RelationshipsByTarget[pair.Key] = pair.Value.ToList();
+            schemaSnapshot = state.schemaSnapshot;
+            defsBuilt = state.defsBuilt;
+            revision = state.revision;
+            KnowledgeContextRegistry.RestoreRegistrationState(state.contextState);
+            KnowledgeRelationService.RestoreRegistrationState(state.relationState);
+            KnowledgeSharedExpertiseService.RestoreRegistrationState(state.expertiseState);
+            KnowledgeUiCache.Reset();
+        }
+
         public static event Action<KnowledgeSubjectSnapshot> SubjectChanged;
 
         public static int Revision => revision;
@@ -63,19 +176,29 @@ namespace KnowledgeFramework
         {
             if (defsBuilt || defsBuildInProgress) return;
             Stopwatch stopwatch = Stopwatch.StartNew();
+            DefBuildState previousState = CaptureDefBuildState();
             defsBuildInProgress = true;
             try
             {
+                List<KnowledgeSchema> definitionSchemas = new List<KnowledgeSchema>();
+                HashSet<string> definitionIds = new HashSet<string>(StringComparer.Ordinal);
                 foreach (KnowledgeDomainDef def in DefDatabase<KnowledgeDomainDef>.AllDefsListForReading)
                 {
-                    if (!RegisterSchema(KnowledgeSchema.FromDef(def), new KnowledgeRegistrationOptions
+                    KnowledgeSchema schema = KnowledgeSchema.FromDef(def);
+                    if (!ValidateSchema(schema) || !definitionIds.Add(schema.id) || Schemas.ContainsKey(schema.id))
+                        throw new InvalidOperationException("A domain definition could not be validated without mutation.");
+                    definitionSchemas.Add(schema);
+                }
+                ValidateDefinitionSubjects(definitionSchemas.ToDictionary(value => value.id, value => value, StringComparer.Ordinal));
+                ValidateDefinitionRegistrations();
+                foreach (KnowledgeSchema schema in definitionSchemas)
+                    if (!RegisterSchema(schema, new KnowledgeRegistrationOptions
                     {
-                        source = def.modContentPack?.PackageId ?? "Defs",
+                        source = schema.source,
                         conflict = KnowledgeRegistrationConflict.Reject
                     })) throw new InvalidOperationException("A domain definition could not be registered.");
-                }
                 foreach (KnowledgeSubjectDef subject in DefDatabase<KnowledgeSubjectDef>.AllDefsListForReading)
-                    RegisterStaticSubject(subject);
+                    if (!RegisterStaticSubject(subject)) throw new InvalidOperationException("A subject definition could not be registered.");
                 foreach (KnowledgeContextTypeDef context in DefDatabase<KnowledgeContextTypeDef>.AllDefsListForReading)
                     KnowledgeContextRegistry.RegisterType(context, true);
                 foreach (KnowledgeSubjectRelationTypeDef relationType in DefDatabase<KnowledgeSubjectRelationTypeDef>.AllDefsListForReading)
@@ -88,6 +211,7 @@ namespace KnowledgeFramework
             }
             catch (Exception exception)
             {
+                RestoreDefBuildState(previousState);
                 defsBuilt = false;
                 KnowledgeFrameworkLifecycle.SchemaBuildFailed();
                 KnowledgeLog.ErrorOnce("schema-build", "Knowledge Framework schema construction failed.", exception);
@@ -649,6 +773,7 @@ namespace KnowledgeFramework
         private static bool RegisterSchema(KnowledgeSchema schema, KnowledgeRegistrationOptions options)
         {
             if (!ValidateSchema(schema)) return false;
+            schema.RefreshCompatibilityKey();
             if (Schemas.TryGetValue(schema.id, out KnowledgeSchema existing))
             {
                 bool replace = options.conflict == KnowledgeRegistrationConflict.Replace ||
@@ -666,20 +791,20 @@ namespace KnowledgeFramework
             return true;
         }
 
-        private static void RegisterStaticSubject(KnowledgeSubjectDef subject)
+        private static bool RegisterStaticSubject(KnowledgeSubjectDef subject)
         {
             string domainId = ResolveDomainId(subject.domainId);
             if (Schema(domainId) == null || !ValidId(subject.StableId))
             {
                 AddIssue("definition.subject", subject.defName, "Static subject references an unknown domain or invalid stable ID.");
-                return;
+                return false;
             }
             string canonicalSubjectId = ResolveSubjectId(domainId, subject.StableId) ?? subject.StableId;
             string key = SubjectKey(domainId, canonicalSubjectId);
             if (StaticSubjects.ContainsKey(key))
             {
                 AddIssue("definition.subject.duplicate", key, "Duplicate static subject was rejected.");
-                return;
+                return false;
             }
             if (canonicalSubjectId == subject.StableId) StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, subject));
             else
@@ -707,6 +832,42 @@ namespace KnowledgeFramework
                 StaticSubjects.Add(key, new KnowledgeSubjectSnapshot(domainId, registration));
             }
             SubjectRegistrationSources[key] = new SubjectRegistrationMetadata { priority = 0, source = "Defs" };
+            return true;
+        }
+
+        private static void ValidateDefinitionSubjects(IReadOnlyDictionary<string, KnowledgeSchema> definitionSchemas)
+        {
+            HashSet<string> keys = new HashSet<string>(StaticSubjects.Keys, StringComparer.Ordinal);
+            foreach (KnowledgeSubjectDef subject in DefDatabase<KnowledgeSubjectDef>.AllDefsListForReading)
+            {
+                string domainId = ResolveDomainId(subject?.domainId);
+                bool knownDomain = domainId != null && (definitionSchemas.ContainsKey(domainId) || Schema(domainId) != null);
+                if (subject == null || !knownDomain || !ValidId(subject.StableId))
+                    throw new InvalidOperationException("A subject definition could not be validated without mutation.");
+                string subjectId = ResolveSubjectId(domainId, subject.StableId) ?? subject.StableId;
+                if (!keys.Add(SubjectKey(domainId, subjectId)))
+                    throw new InvalidOperationException("A duplicate subject definition was detected before mutation.");
+            }
+        }
+
+        private static void ValidateDefinitionRegistrations()
+        {
+            HashSet<string> contextIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (KnowledgeContextTypeDef context in DefDatabase<KnowledgeContextTypeDef>.AllDefsListForReading)
+                if (context == null || !ValidId(context.StableId) || !contextIds.Add(context.StableId))
+                    throw new InvalidOperationException("A context type definition could not be validated without mutation.");
+            HashSet<string> relationIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (KnowledgeSubjectRelationTypeDef relation in DefDatabase<KnowledgeSubjectRelationTypeDef>.AllDefsListForReading)
+                if (relation == null || !ValidId(relation.StableId) || !relationIds.Add(relation.StableId))
+                    throw new InvalidOperationException("A relation type definition could not be validated without mutation.");
+            HashSet<string> expertiseIds = new HashSet<string>(StringComparer.Ordinal);
+            foreach (KnowledgeExpertiseNamespaceDef expertise in DefDatabase<KnowledgeExpertiseNamespaceDef>.AllDefsListForReading)
+                if (expertise == null || !ValidId(expertise.StableId) ||
+                    !expertiseIds.Add(expertise.StableId) ||
+                    !KnowledgeMath.IsFinite(expertise.adept) || !KnowledgeMath.IsFinite(expertise.expert) ||
+                    !KnowledgeMath.IsFinite(expertise.master) ||
+                    !(new KnowledgeRankThresholds(expertise.adept, expertise.expert, expertise.master)).IsValid)
+                    throw new InvalidOperationException("An expertise namespace definition could not be validated without mutation.");
         }
 
         private static bool ValidateSchema(KnowledgeSchema schema)
@@ -958,6 +1119,13 @@ namespace KnowledgeFramework
                 valid = false;
             }
             return valid;
+        }
+
+        internal static bool ValidateSchemaForConsumer(KnowledgeSchema schema)
+        {
+            if (schema == null || !ValidateSchema(schema)) return false;
+            schema.RefreshCompatibilityKey();
+            return true;
         }
 
         private static bool ValidateRequirementGroup(KnowledgeRequirementGroup group, string schemaDomain, string owner, ref bool valid, int depth = 0)
