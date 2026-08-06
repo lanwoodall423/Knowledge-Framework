@@ -2,7 +2,7 @@
 
 ## Release Identity
 
-The current release is `3.0.0-beta.1`. `VERSION` is the authoritative semantic
+The current release is `3.1.0-beta.1`. `VERSION` is the authoritative semantic
 release value. The primary `KnowledgeFramework` assembly uses it for
 informational/file metadata, the bridge adapter and bridge manifest use it for
 reported release identity, and the About/package metadata records the same
@@ -12,6 +12,10 @@ value.
 integer capability-generation contract and is currently `3`. Capability
 generation and `CapabilityVersion(...)` values may remain stable across patch,
 beta, and final releases.
+
+This is a semver minor increment because it adds public consumer contracts without
+removing or changing existing contracts. `ApiVersion` remains `3`; the new
+consumer capabilities are generation-3 additions, not a semantic release number.
 
 ## Compatibility Guarantees
 
@@ -69,3 +73,34 @@ accept API changes.
 Prefer stable entry points and capability checks. Treat Advanced APIs as
 explicit integration surfaces, keep Legacy APIs for compatibility only, and
 do not depend on Development/diagnostic or Internal implementation details.
+
+### Consumer lifecycle boundary
+
+Use `KnowledgeConsumerApi.Readiness` and call `PrepareRegistration()` before
+registering runtime domains. Readiness becomes `Ready` after the current game's
+framework component has completed initialization and framework-owned Def/schema
+construction has succeeded. It resets to `Unavailable` when there is no current
+game or framework state, and returns to `NotInitialized` during a game transition
+until the new component finishes initialization. The framework schedules and owns
+Def/schema construction; `PrepareRegistration()` is an idempotent preparation request, not
+permission to call `KnowledgeRegistry.BuildDefSchemas()` directly. Registration is
+supported only when the returned status is `Ready`. A no-game or missing-component
+status is temporary unavailability; defer optional content and retry on the next
+framework/game lifecycle rather than inspecting
+`GameComponent_KnowledgeFramework.Current`.
+
+`InitializationFailed` is terminal for the current framework/game lifecycle and
+has the stable `SchemaBuildFailed` reason. Consumers should disable optional content
+and report the failure; they must not retry by rebuilding global schemas.
+
+`InspectDomainRegistration()` returns immutable owner, priority, and compatibility
+metadata. `RegisterDomain()` accepts only an unregistered compatible domain and
+always uses reject-on-conflict behavior, so a foreign owner is never replaced.
+
+Use `InvalidateSubject`, bounded `InvalidateSubjects`, or explicit
+`InvalidateDomain` for consumer-owned changes. These calls invalidate dynamic
+subject snapshots and dependent V3 claim/stage/relation/comparison/UI
+presentation caches through framework revisions. The bounded collection is capped
+at `KnowledgeConsumerApi.MaxTargetedInvalidationSubjects` (256). Existing broad
+`KnowledgeRegistry.InvalidateSubjects()` and `KnowledgeDomainRegistry.InvalidateDomain()`
+remain available for compatibility.

@@ -12,10 +12,24 @@ relations. Give every consumer-owned Def, subject, facet, stage, claim, context,
 milestone, and relation a stable ID. Localize the label and description keys in the
 consumer's English keyed language file.
 
-Dynamic subjects are appropriate for generated specimens or world content:
+Dynamic subjects are appropriate for generated specimens or world content. Runtime
+registration must happen after framework readiness:
 
 ```csharp
-KnowledgeRegistry.RegisterSubject("example.domain", new KnowledgeSubjectRegistration
+KnowledgeFrameworkReadinessStatus readiness = KnowledgeConsumerApi.PrepareRegistration();
+if (!readiness.IsReady) return; // defer optional content; do not build schemas
+
+KnowledgeConsumerRegistrationResult registration = KnowledgeConsumerApi.RegisterDomain(
+    new KnowledgeDomainRegistration
+    {
+        id = "example.runtime-domain",
+        label = "Example runtime domain",
+        source = "example.mod"
+    },
+    new KnowledgeRegistrationOptions { source = "example.mod", priority = 100 });
+if (!registration.Success) return; // a foreign owner is never replaced
+
+KnowledgeRegistry.RegisterSubject("example.runtime-domain", new KnowledgeSubjectRegistration
 {
     id = "specimen-001",
     label = "Specimen 001",
@@ -24,6 +38,11 @@ KnowledgeRegistry.RegisterSubject("example.domain", new KnowledgeSubjectRegistra
     applicableClaimIds = new[] { "temperature" }
 });
 ```
+
+`KnowledgeConsumerApi.InspectDomainRegistration(...)` can be called before
+registration to distinguish `Unregistered`, `RegisteredBySameOwner`,
+`RegisteredByOtherOwner`, and `Incompatible`. It returns owner/source and priority
+metadata only; never replace a foreign registration.
 
 ## Record An Observation
 
@@ -75,7 +94,12 @@ used as player-facing labels without explicit localization.
 
 ```csharp
 if (KnowledgeFrameworkApi.ApiVersion >= 3 &&
-    KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TypedMeasurementsCapability))
+     KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TypedMeasurementsCapability) &&
+     KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.ReadinessInspectionCapability) &&
+     KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.RegistrationOwnershipCapability) &&
+     KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TargetedInvalidationCapability) &&
+     KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.ReadinessInspectionCapability) ==
+         KnowledgeFrameworkApi.ThirdGenerationApiVersion)
 {
     string release = KnowledgeFrameworkApi.ReleaseVersion;
 }
@@ -84,6 +108,24 @@ if (KnowledgeFrameworkApi.ApiVersion >= 3 &&
 Release version, integer API version, and capability-generation values are separate
 contracts. Consumers should use capability checks for optional behavior and keep a
 versioned `KnowledgeConsumerMigration` for persisted migrations.
+
+## Targeted Invalidation
+
+Invalidate after changing a consumer-owned subject or relationship instead of
+touching framework components or global schema state:
+
+```csharp
+KnowledgeInvalidationResult result = KnowledgeConsumerApi.InvalidateSubject(
+    "example.domain", "specimen-001");
+if (!result.Success && result.code != KnowledgeInvalidationResultCode.SubjectNotFound)
+    Log.Warning("Knowledge invalidation deferred: " + result.code);
+```
+
+Use `InvalidateSubjects(domainId, subjectIds)` for a bounded batch (maximum 256)
+and `InvalidateDomain(domainId)` only when the whole domain changed. Both APIs
+advance the framework revision and invalidate affected snapshots, claims, stages,
+relations, comparisons, provider/UI caches, and context presentation snapshots.
+The older broad invalidation methods remain compatibility APIs.
 
 ## Compatibility Rules
 

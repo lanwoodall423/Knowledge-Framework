@@ -60,6 +60,43 @@ namespace KnowledgeFramework
             Check("confidence aggregation", confidence2 > confidence1 && contradicted < confidence2, ref passed, failures);
             Check("optional uncertainty", KnowledgeMath.Confidence(0.01f, 100f, false) == 1f, ref passed, failures);
             Check("invalid numbers", !KnowledgeMath.IsFinite(float.NaN) && !KnowledgeMath.IsFinite(float.PositiveInfinity), ref passed, failures);
+            KnowledgeFrameworkReadinessStatus readiness = KnowledgeConsumerApi.Readiness;
+            Check("readiness before initialization", readiness.state == KnowledgeFrameworkReadinessState.Unavailable ||
+                readiness.state == KnowledgeFrameworkReadinessState.NotInitialized || readiness.state == KnowledgeFrameworkReadinessState.Ready,
+                ref passed, failures);
+            string[] consumerCapabilities =
+            {
+                KnowledgeFrameworkApi.TypedMeasurementsCapability,
+                KnowledgeFrameworkApi.EvidenceCapability,
+                KnowledgeFrameworkApi.ClaimsCapability,
+                KnowledgeFrameworkApi.ContextsCapability,
+                KnowledgeFrameworkApi.WitnessLearningCapability,
+                KnowledgeFrameworkApi.MilestonesCapability,
+                KnowledgeFrameworkApi.RelationshipsCapability,
+                KnowledgeFrameworkApi.StructuralRelationsCapability,
+                KnowledgeFrameworkApi.UiCapability,
+                KnowledgeFrameworkApi.ConsumerMigrationCapability,
+                KnowledgeFrameworkApi.DomainAliasesCapability,
+                KnowledgeFrameworkApi.ReadinessInspectionCapability,
+                KnowledgeFrameworkApi.SafeRegistrationCapability,
+                KnowledgeFrameworkApi.RegistrationOwnershipCapability,
+                KnowledgeFrameworkApi.TargetedInvalidationCapability
+            };
+            Check("consumer capability contract", consumerCapabilities.All(capability =>
+                KnowledgeFrameworkApi.Supports(3, capability)),
+                ref passed, failures);
+            string[] generationThreeCapabilities =
+            {
+                KnowledgeFrameworkApi.ConsumerMigrationCapability,
+                KnowledgeFrameworkApi.DomainAliasesCapability,
+                KnowledgeFrameworkApi.ReadinessInspectionCapability,
+                KnowledgeFrameworkApi.SafeRegistrationCapability,
+                KnowledgeFrameworkApi.RegistrationOwnershipCapability,
+                KnowledgeFrameworkApi.TargetedInvalidationCapability
+            };
+            Check("consumer capability generations", generationThreeCapabilities.All(capability =>
+                KnowledgeFrameworkApi.CapabilityVersion(capability) == KnowledgeFrameworkApi.ThirdGenerationApiVersion),
+                ref passed, failures);
             KnowledgeEffectAccumulator effects = new KnowledgeEffectAccumulator(10f, true);
             effects.Compose(KnowledgeEffectComposition.Add, 2f);
             effects.Compose(KnowledgeEffectComposition.Multiply, 3f);
@@ -170,8 +207,52 @@ namespace KnowledgeFramework
             };
             bool previousBioPanelEnabled = KnowledgeFrameworkMod.Settings?.BioPanelEnabled ?? true;
             bool bioProviderRegistered = false;
+            const string consumerDomain = "KnowledgeFramework.Verification.Consumer";
             try
             {
+                KnowledgeFrameworkReadinessStatus ready = KnowledgeConsumerApi.PrepareRegistration();
+                Check("readiness after initialization", ready.IsReady, ref passed, failures);
+                KnowledgeFrameworkLifecycle.SchemaBuildFailed();
+                KnowledgeFrameworkReadinessStatus failedReadiness = KnowledgeConsumerApi.Readiness;
+                Check("initialization failure status", failedReadiness.state == KnowledgeFrameworkReadinessState.InitializationFailed &&
+                    failedReadiness.reason == KnowledgeFrameworkReadinessReason.SchemaBuildFailed, ref passed, failures);
+                KnowledgeFrameworkLifecycle.ClearSchemaBuildFailureForVerification();
+                Check("readiness failure recovery", KnowledgeConsumerApi.PrepareRegistration().IsReady, ref passed, failures);
+                KnowledgeDomainRegistration consumerRegistration = new KnowledgeDomainRegistration
+                {
+                    id = consumerDomain,
+                    label = "Consumer verification",
+                    source = "verification.consumer",
+                    facets = new[] { NewFacet("consumer", 100f) }
+                };
+                KnowledgeRegistrationOptions consumerOptions = new KnowledgeRegistrationOptions
+                {
+                    source = "verification.consumer",
+                    priority = 10
+                };
+                KnowledgeDomainRegistrationInspection unregistered = KnowledgeConsumerApi.InspectDomainRegistration(consumerRegistration, consumerOptions);
+                Check("unregistered ownership lookup", unregistered.state == KnowledgeDomainRegistrationState.Unregistered, ref passed, failures);
+                KnowledgeConsumerRegistrationResult consumerRegistered = KnowledgeConsumerApi.RegisterDomain(consumerRegistration, consumerOptions);
+                KnowledgeConsumerRegistrationResult consumerAgain = KnowledgeConsumerApi.RegisterDomain(consumerRegistration, consumerOptions);
+                Check("safe registration preparation is idempotent", consumerRegistered.code == KnowledgeConsumerRegistrationResultCode.Registered &&
+                    consumerAgain.code == KnowledgeConsumerRegistrationResultCode.AlreadyRegistered, ref passed, failures);
+                KnowledgeDomainRegistrationInspection sameOwner = KnowledgeConsumerApi.InspectDomainRegistration(consumerRegistration, consumerOptions);
+                KnowledgeDomainRegistrationInspection foreignOwner = KnowledgeConsumerApi.InspectDomainRegistration(consumerRegistration,
+                    new KnowledgeRegistrationOptions { source = "verification.foreign", priority = 10 });
+                KnowledgeDomainRegistration foreignRegistration = new KnowledgeDomainRegistration
+                {
+                    id = consumerDomain,
+                    label = "Foreign incompatible consumer",
+                    source = "verification.foreign",
+                    facets = new[] { NewFacet("consumer", 100f) }
+                };
+                KnowledgeDomainRegistrationInspection incompatible = KnowledgeConsumerApi.InspectDomainRegistration(foreignRegistration,
+                    new KnowledgeRegistrationOptions { source = "verification.foreign", priority = 10 });
+                Check("same-owner ownership lookup", sameOwner.state == KnowledgeDomainRegistrationState.RegisteredBySameOwner, ref passed, failures);
+                Check("foreign-owner conflict lookup", foreignOwner.state == KnowledgeDomainRegistrationState.RegisteredByOtherOwner &&
+                    !KnowledgeConsumerApi.RegisterDomain(consumerRegistration, new KnowledgeRegistrationOptions { source = "verification.foreign" }).Success,
+                    ref passed, failures);
+                Check("incompatible registration lookup", incompatible.state == KnowledgeDomainRegistrationState.Incompatible, ref passed, failures);
                 bool registered = KnowledgeRegistry.RegisterDomain(registration, new KnowledgeRegistrationOptions
                 {
                     source = "verification",
@@ -254,6 +335,21 @@ namespace KnowledgeFramework
                     KnowledgeQuery.Expertise(TestDomain, pawn, "field").amount >= 25f, ref passed, failures);
                 Check("duplicate registration rejection", !KnowledgeRegistry.RegisterDomain(registration), ref passed, failures);
                 Check("large dynamic subject enumeration", KnowledgeRegistry.Subjects(TestDomain).Count >= 5000, ref passed, failures);
+                int beforeTargetedRevision = component.GlobalRevision;
+                KnowledgeInvalidationResult oneSubject = KnowledgeConsumerApi.InvalidateSubject(TestDomain, "source");
+                KnowledgeInvalidationResult boundedSubjects = KnowledgeConsumerApi.InvalidateSubjects(TestDomain, new[] { "source", "related" });
+                KnowledgeInvalidationResult tooManySubjects = KnowledgeConsumerApi.InvalidateSubjects(TestDomain,
+                    Enumerable.Range(0, KnowledgeConsumerApi.MaxTargetedInvalidationSubjects + 1).Select(index => "generated-" + index));
+                Check("single-subject invalidation", oneSubject.Success && oneSubject.invalidatedCount == 1, ref passed, failures);
+                Check("bounded multi-subject invalidation", boundedSubjects.Success && boundedSubjects.invalidatedCount == 2, ref passed, failures);
+                Check("bounded invalidation limit", tooManySubjects.code == KnowledgeInvalidationResultCode.BoundExceeded, ref passed, failures);
+                Check("claim stage relation UI invalidation", component.GlobalRevision > beforeTargetedRevision &&
+                    boundedSubjects.globalRevision > oneSubject.globalRevision, ref passed, failures);
+                KnowledgeInvalidationResult domainInvalidation = KnowledgeConsumerApi.InvalidateDomain(TestDomain);
+                Check("explicit domain invalidation", domainInvalidation.Success, ref passed, failures);
+                int broadRevision = KnowledgeRegistry.Revision;
+                KnowledgeRegistry.InvalidateSubjects(TestDomain);
+                Check("broad invalidation compatibility", KnowledgeRegistry.Revision > broadRevision, ref passed, failures);
             }
             catch (Exception exception)
             {
@@ -265,7 +361,10 @@ namespace KnowledgeFramework
                 if (bioProviderRegistered) KnowledgeProviderRegistry.Unregister("verification.bio");
                 component.RemoveDomainDataV2(TestDomain);
                 KnowledgeRegistry.UnregisterDomain(TestDomain, "verification");
+                component.RemoveDomainDataV2(consumerDomain);
+                KnowledgeRegistry.UnregisterDomain(consumerDomain, "verification.consumer");
                 KnowledgeRegistry.ClearDiagnostics(TestDomain);
+                KnowledgeRegistry.ClearDiagnostics(consumerDomain);
             }
             KnowledgeVerificationResult v3 = KnowledgeFrameworkVerificationV3.RunGameTests(pawn);
             int v2GamePassed = Math.Max(0, passed - pure.passed);

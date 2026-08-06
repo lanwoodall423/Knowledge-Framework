@@ -46,7 +46,9 @@ typed Float claim, an observation recipe, a milestone, expertise, a typed
 effect channel, a context type, and a structural relation type. All Def and
 UI IDs have English localization entries.
 
-`ReferenceConsumerRuntime.Initialize` calls `BuildDefSchemas` and registers
+`ReferenceConsumerRuntime.Initialize` calls `KnowledgeConsumerApi.PrepareRegistration`
+and registers a consumer-owned runtime domain through `RegisterDomain`. It never
+constructs global schemas or replaces a foreign registration. It then registers
 `observed-specimen` at runtime. If the framework, Def, or optional content is
 absent, initialization returns without breaking the game.
 
@@ -62,8 +64,18 @@ The public methods demonstrate the contract:
 - `QueryTypedEffect(pawn)` queries the typed gameplay-effect channel.
 - `OpenGuide(pawn)` opens the minimal `KnowledgeV2Ui.Open` deep link.
 - `MigrateConsumer(pawn)` imports version 1 of the consumer migration.
-- `IsCompatible`, `Release`, and `OptionalInsight` show capability/version
-  checks and safe optional-content probing.
+- `IsCompatible`, `Release`, `Readiness`, `RuntimeDomainOwnership`, and
+  `OptionalInsight` show capability/version checks and safe optional-content
+  probing.
+- `InvalidateObservedSpecimen()` demonstrates targeted invalidation after a
+  consumer-owned subject or relation changes.
+
+The supported lifecycle is: check `KnowledgeConsumerApi.Readiness`, call
+`PrepareRegistration()` once or repeatedly until it returns `Ready`, inspect
+ownership, then call `RegisterDomain()`. A no-game or missing-framework status is
+temporary; an initialization failure disables optional content for that lifecycle.
+Consumers never inspect `GameComponent_KnowledgeFramework.Current` and never call
+`KnowledgeRegistry.BuildDefSchemas()`.
 
 The framework owns persistence. Its migration record and V3 records remain in
 the save if this consumer is removed, and the same versioned migration is

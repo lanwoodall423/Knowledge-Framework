@@ -41,10 +41,18 @@ foreach ($id in $requiredIds) {
 $source = Get-Content -LiteralPath (Join-Path $root 'ReferenceConsumerMod.cs') -Raw
 foreach ($api in @('KnowledgeEngine.Submit', 'KnowledgeTransmission.Report', 'KnowledgeTransmission.Document',
         'KnowledgeMilestoneService.Confirm', 'KnowledgeRelationService.Add', 'KnowledgeEffects.Query',
-        'KnowledgeV2Ui.Open', 'KnowledgeMigrationService.Import', 'KnowledgeFrameworkApi.Supports')) {
+        'KnowledgeV2Ui.Open', 'KnowledgeMigrationService.Import', 'KnowledgeFrameworkApi.Supports',
+        'KnowledgeConsumerApi.PrepareRegistration', 'KnowledgeConsumerApi.InspectDomainRegistration',
+        'KnowledgeConsumerApi.RegisterDomain', 'KnowledgeConsumerApi.InvalidateSubject',
+        'KnowledgeConsumerApi.Readiness', 'KnowledgeFrameworkApi.CapabilityVersion')) {
     if ($source.Contains($api)) { Pass-Check ('API example ' + $api) }
     else { Fail-Check ('API example ' + $api) }
 }
+
+if ($source -notmatch 'KnowledgeRegistry\.BuildDefSchemas' -and $source -notmatch 'KnowledgeRegistrationConflict\.Replace') {
+    Pass-Check 'consumer does not control schema construction or replace registrations'
+}
+else { Fail-Check 'consumer does not control schema construction or replace registrations' }
 
 $translations = Get-Content -LiteralPath (Join-Path $root '1.6/Languages/English/Keyed/ReferenceConsumer.xml') -Raw
 foreach ($key in @('ReferenceConsumer_DomainLabel', 'ReferenceConsumer_FacetObservation', 'ReferenceConsumer_FacetHabitat',

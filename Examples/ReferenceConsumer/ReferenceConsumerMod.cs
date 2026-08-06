@@ -27,11 +27,35 @@ namespace ReferenceConsumer
         public const string MilestoneId = "documented";
         public const string RelationTypeId = "reference.observed-from";
         public const string ConsumerId = "lan.knowledgeframework.referenceconsumer";
+        public const string ConsumerDomainId = "reference.consumer-runtime";
 
         public static bool IsCompatible => KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TypedMeasurementsCapability) &&
-            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.StructuralRelationsCapability);
+            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.StructuralRelationsCapability) &&
+            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.ReadinessInspectionCapability) &&
+            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.SafeRegistrationCapability) &&
+            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.RegistrationOwnershipCapability) &&
+            KnowledgeFrameworkApi.Supports(3, KnowledgeFrameworkApi.TargetedInvalidationCapability) &&
+            KnowledgeFrameworkApi.CapabilityVersion(KnowledgeFrameworkApi.TargetedInvalidationCapability) ==
+                KnowledgeFrameworkApi.ThirdGenerationApiVersion;
 
         public static string Release => KnowledgeFrameworkApi.ReleaseVersion;
+        public static KnowledgeFrameworkReadinessStatus Readiness => KnowledgeConsumerApi.Readiness;
+
+        public static KnowledgeDomainRegistration RuntimeDomainRegistration() => new KnowledgeDomainRegistration
+        {
+            id = ConsumerDomainId,
+            label = "Reference Consumer Runtime",
+            description = "A consumer-owned runtime domain used to demonstrate safe registration.",
+            source = ConsumerId,
+            facets = new[] { new KnowledgeFacetDef { defName = "reference-runtime-facet", stableId = "runtime" } }
+        };
+
+        public static KnowledgeDomainRegistrationInspection RuntimeDomainOwnership() =>
+            KnowledgeConsumerApi.InspectDomainRegistration(RuntimeDomainRegistration(), new KnowledgeRegistrationOptions
+            {
+                source = ConsumerId,
+                priority = 100
+            });
 
         public static void Initialize()
         {
@@ -42,7 +66,23 @@ namespace ReferenceConsumer
                     Log.Warning("[ReferenceConsumer] Knowledge Framework V3 capabilities are unavailable; optional content is disabled.");
                     return;
                 }
-                KnowledgeRegistry.BuildDefSchemas();
+                KnowledgeFrameworkReadinessStatus readiness = KnowledgeConsumerApi.PrepareRegistration();
+                if (!readiness.IsReady)
+                {
+                    Log.Warning("[ReferenceConsumer] Knowledge Framework is not ready (" + readiness.reason + "); optional content is disabled.");
+                    return;
+                }
+                KnowledgeConsumerRegistrationResult runtimeRegistration = KnowledgeConsumerApi.RegisterDomain(
+                    RuntimeDomainRegistration(), new KnowledgeRegistrationOptions
+                    {
+                        source = ConsumerId,
+                        priority = 100
+                    });
+                if (!runtimeRegistration.Success)
+                {
+                    Log.Warning("[ReferenceConsumer] Consumer-owned runtime domain was not registered (" + runtimeRegistration.code + ").");
+                    return;
+                }
                 if (KnowledgeRegistry.Schema(DomainId) == null)
                 {
                     Log.Warning("[ReferenceConsumer] Domain Def is unavailable; the reference consumer will remain inactive.");
@@ -61,7 +101,7 @@ namespace ReferenceConsumer
                 {
                     source = ConsumerId,
                     priority = 100,
-                    conflict = KnowledgeRegistrationConflict.Replace
+                    conflict = KnowledgeRegistrationConflict.Reject
                 });
             }
             catch (Exception exception)
@@ -193,5 +233,7 @@ namespace ReferenceConsumer
                 expertise = 0f
             });
         }
+
+        public static bool InvalidateObservedSpecimen() => KnowledgeConsumerApi.InvalidateSubject(DomainId, DynamicSubjectId).Success;
     }
 }

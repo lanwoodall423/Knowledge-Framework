@@ -59,6 +59,12 @@ namespace KnowledgeFramework
         public const string CrossDomainCapability = "cross-domain-requirements";
         public const string SharedExpertiseCapability = "shared-expertise";
         public const string StructuredComparisonCapability = "structured-comparison";
+        public const string ConsumerMigrationCapability = "consumer-migration";
+        public const string DomainAliasesCapability = "domain-aliases";
+        public const string ReadinessInspectionCapability = "readiness-inspection";
+        public const string SafeRegistrationCapability = "safe-registration";
+        public const string RegistrationOwnershipCapability = "registration-ownership";
+        public const string TargetedInvalidationCapability = "targeted-invalidation";
 
         public static bool Supports(int minimumApiVersion, string capability = null)
         {
@@ -73,7 +79,10 @@ namespace KnowledgeFramework
                 || capability == ContextsCapability || capability == MilestonesCapability || capability == StructuralRelationsCapability
                 || capability == SubjectLifecycleCapability || capability == AccrualPoliciesCapability || capability == StalenessCapability
                 || capability == FilteredTransmissionCapability || capability == WitnessLearningCapability || capability == RichEffectRequirementsCapability
-                || capability == CrossDomainCapability || capability == SharedExpertiseCapability || capability == StructuredComparisonCapability;
+                || capability == CrossDomainCapability || capability == SharedExpertiseCapability || capability == StructuredComparisonCapability
+                || capability == ConsumerMigrationCapability || capability == DomainAliasesCapability
+                || capability == ReadinessInspectionCapability || capability == SafeRegistrationCapability
+                || capability == RegistrationOwnershipCapability || capability == TargetedInvalidationCapability;
         }
 
         public static int CapabilityVersion(string capability)
@@ -98,6 +107,12 @@ namespace KnowledgeFramework
                 case CrossDomainCapability:
                 case SharedExpertiseCapability:
                 case StructuredComparisonCapability:
+                case ConsumerMigrationCapability:
+                case DomainAliasesCapability:
+                case ReadinessInspectionCapability:
+                case SafeRegistrationCapability:
+                case RegistrationOwnershipCapability:
+                case TargetedInvalidationCapability:
                     return ThirdGenerationApiVersion;
                 default:
                     return SecondGenerationApiVersion;
