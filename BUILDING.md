@@ -43,7 +43,9 @@ Release output is intentionally limited to:
 - `1.6/Assemblies/KnowledgeFramework.build.json`
 
 The manifest records the semantic version, assembly identity, DLL hash,
-deterministic source-tree hash, UTC build time, and RimWorld target version.
+deterministic source-tree hash, UTC build time, and RimWorld target version. The source-tree
+hash uses ordinal paths and canonical UTF-8 LF text bytes, so Windows and Linux checkouts
+produce the same release hash despite differing working-tree line endings.
 
 ## Bridge adapter
 
