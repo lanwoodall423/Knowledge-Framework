@@ -1,5 +1,16 @@
 # Changelog
 
+## 3.1.0-beta.1
+
+- Added the stable `KnowledgeConsumerApi` readiness, idempotent preparation, safe
+  non-replacing registration, ownership inspection, and bounded invalidation APIs.
+- Added generation-3 capability constants for consumer migration, aliases,
+  readiness, safe registration, ownership inspection, and targeted invalidation.
+- Added behavioral coverage and a reference consumer using the supported lifecycle
+  boundary without direct schema construction or destructive registration.
+- Preserved all existing public members, V1/V2/V3 save migrations, Def/XML fields,
+  and broad invalidation APIs.
+
 ## 3.0.0-beta.1
 
 - Added the typed V3 integration layer for claims, contexts, balanced discovery,

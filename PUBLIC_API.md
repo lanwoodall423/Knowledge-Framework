@@ -11,6 +11,9 @@ Stable APIs are intended for ordinary consumer mods and preserve source,
 binary, Def/XML, and save compatibility within the documented generation:
 
 - `KnowledgeFrameworkApi`
+- `KnowledgeConsumerApi`, `KnowledgeFrameworkReadinessStatus`,
+  `KnowledgeDomainRegistrationInspection`, `KnowledgeConsumerRegistrationResult`,
+  and `KnowledgeInvalidationResult`
 - `KnowledgeRegistry`, `KnowledgeDomainRegistry`, and domain/subject
   registration contracts
 - `KnowledgeService`, `KnowledgeEngine`, `KnowledgeTransaction`,
@@ -25,6 +28,12 @@ binary, Def/XML, and save compatibility within the documented generation:
 Stable does not mean that a consumer may ignore the capability-generation
 contract. Check `KnowledgeFrameworkApi.Supports(...)` before optional V2/V3
 features.
+
+`KnowledgeConsumerApi` is the supported boundary for runtime consumers. It owns
+readiness checks, idempotent registration preparation, read-only ownership/conflict
+inspection, safe non-replacing registration, and bounded subject/domain
+invalidation. Its result objects expose only immutable decision metadata; schema,
+component, cache, and registration implementation objects remain internal.
 
 ## Advanced
 
@@ -48,7 +57,7 @@ for new integrations:
 - types with `V2` suffixes and the legacy migration/registration helpers
 - members marked `[Obsolete]`
 
-No obsolete member is removed in the `3.0.0-beta.1` release.
+No obsolete member is removed in the `3.1.0-beta.1` release.
 
 ## Development/Diagnostic
 

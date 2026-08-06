@@ -1,6 +1,6 @@
 # Knowledge Framework public API baseline
 # format=1
-# release=3.0.0-beta.1
+# release=3.1.0-beta.1
 # Additive or incompatible changes require an intentional baseline update.
 
 CTOR|KnowledgeFramework.GameComponent_KnowledgeFramework|visibility=public|modifiers=|params=
@@ -106,8 +106,24 @@ ENUM|KnowledgeFramework.KnowledgeComparisonRowKind|Facet|value=1
 ENUM|KnowledgeFramework.KnowledgeComparisonRowKind|Milestone|value=2
 ENUM|KnowledgeFramework.KnowledgeComparisonRowKind|Record|value=4
 ENUM|KnowledgeFramework.KnowledgeComparisonRowKind|Relation|value=3
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|AlreadyRegistered|value=1
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|Failed|value=6
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|FrameworkUnavailable|value=2
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|InvalidRequest|value=5
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|Registered|value=0
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|RejectedForeignOwner|value=3
+ENUM|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|RejectedIncompatible|value=4
 ENUM|KnowledgeFramework.KnowledgeContextFallbackMode|ExactOnly|value=0
 ENUM|KnowledgeFramework.KnowledgeContextFallbackMode|ParentThenGlobal|value=1
+ENUM|KnowledgeFramework.KnowledgeDomainOwnerRelation|None|value=0
+ENUM|KnowledgeFramework.KnowledgeDomainOwnerRelation|OtherOwner|value=2
+ENUM|KnowledgeFramework.KnowledgeDomainOwnerRelation|SameOwner|value=1
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|FrameworkUnavailable|value=1
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|Incompatible|value=5
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|InvalidRequest|value=0
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|RegisteredByOtherOwner|value=4
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|RegisteredBySameOwner|value=3
+ENUM|KnowledgeFramework.KnowledgeDomainRegistrationState|Unregistered|value=2
 ENUM|KnowledgeFramework.KnowledgeEffectComposition|Action|value=8
 ENUM|KnowledgeFramework.KnowledgeEffectComposition|Add|value=0
 ENUM|KnowledgeFramework.KnowledgeEffectComposition|Allow|value=5
@@ -121,9 +137,25 @@ ENUM|KnowledgeFramework.KnowledgeEffectComposition|Reveal|value=7
 ENUM|KnowledgeFramework.KnowledgeEvidenceDisposition|Contradictory|value=1
 ENUM|KnowledgeFramework.KnowledgeEvidenceDisposition|Neutral|value=2
 ENUM|KnowledgeFramework.KnowledgeEvidenceDisposition|Supporting|value=0
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|GameTransition|value=6
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|InitializationPending|value=1
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|NoCurrentGame|value=2
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|NoFrameworkState|value=3
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|None|value=0
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|SchemaBuildFailed|value=5
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessReason|SchemaBuildPending|value=4
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessState|InitializationFailed|value=3
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessState|NotInitialized|value=0
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessState|Ready|value=1
+ENUM|KnowledgeFramework.KnowledgeFrameworkReadinessState|Unavailable|value=2
 ENUM|KnowledgeFramework.KnowledgeInsightScope|Both|value=2
 ENUM|KnowledgeFramework.KnowledgeInsightScope|Colony|value=1
 ENUM|KnowledgeFramework.KnowledgeInsightScope|Personal|value=0
+ENUM|KnowledgeFramework.KnowledgeInvalidationResultCode|BoundExceeded|value=3
+ENUM|KnowledgeFramework.KnowledgeInvalidationResultCode|FrameworkUnavailable|value=1
+ENUM|KnowledgeFramework.KnowledgeInvalidationResultCode|InvalidRequest|value=0
+ENUM|KnowledgeFramework.KnowledgeInvalidationResultCode|Invalidated|value=4
+ENUM|KnowledgeFramework.KnowledgeInvalidationResultCode|SubjectNotFound|value=2
 ENUM|KnowledgeFramework.KnowledgeMenuScope|Colonist|value=0
 ENUM|KnowledgeFramework.KnowledgeMenuScope|Colony|value=1
 ENUM|KnowledgeFramework.KnowledgeMilestoneEventKind|Available|value=0
@@ -396,6 +428,7 @@ FIELD|KnowledgeFramework.KnowledgeComparisonSnapshot|rows|visibility=public|modi
 FIELD|KnowledgeFramework.KnowledgeComparisonSnapshot|schemaId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeComparisonSnapshot|schemaLabel|visibility=public|modifiers=readonly|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeComparisonSnapshot|secondSubjectId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeConsumerApi|MaxTargetedInvalidationSubjects|visibility=public|modifiers=static,const|type=System.Int32|constant=256
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|claims|visibility=public|modifiers=|type=System.Collections.Generic.IReadOnlyList<KnowledgeFramework.KnowledgeMeasurement>|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|colonyKnowledge|visibility=public|modifiers=|type=System.Single|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|consumerId|visibility=public|modifiers=|type=System.String|constant=<none>
@@ -409,6 +442,10 @@ FIELD|KnowledgeFramework.KnowledgeConsumerMigration|relations|visibility=public|
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|subjectId|visibility=public|modifiers=|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|subjects|visibility=public|modifiers=|type=System.Collections.Generic.IReadOnlyList<KnowledgeFramework.KnowledgeSubjectRegistration>|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeConsumerMigration|version|visibility=public|modifiers=|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeConsumerRegistrationResult|code|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeConsumerRegistrationResult|inspection|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeDomainRegistrationInspection|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeConsumerRegistrationResult|readiness|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeFrameworkReadinessStatus|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeConsumerRegistrationResult|registryRevision|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeContextKey|stableId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeContextKey|typeId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeContextTypeDef|allowFallback|visibility=public|modifiers=|type=System.Boolean|constant=<none>
@@ -471,6 +508,15 @@ FIELD|KnowledgeFramework.KnowledgeDomainDef|stableId|visibility=public|modifiers
 FIELD|KnowledgeFramework.KnowledgeDomainDef|stageAggregationMode|visibility=public|modifiers=|type=KnowledgeFramework.KnowledgeStageAggregationMode|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeDomainDef|stages|visibility=public|modifiers=|type=System.Collections.Generic.List<KnowledgeFramework.KnowledgeStageDef>|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeDomainDef|transmission|visibility=public|modifiers=|type=KnowledgeFramework.KnowledgeTransmissionDef|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|compatible|visibility=public|modifiers=readonly|type=System.Boolean|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|domainId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|ownerRelation|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeDomainOwnerRelation|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|readiness|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeFrameworkReadinessStatus|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|registeredOwner|visibility=public|modifiers=readonly|type=System.String|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|registeredPriority|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|requestedOwner|visibility=public|modifiers=readonly|type=System.String|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|requestedPriority|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeDomainRegistrationInspection|state|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeDomainRegistrationState|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeDomainRegistration|archetypes|visibility=public|modifiers=|type=System.Collections.Generic.IReadOnlyList<KnowledgeFramework.KnowledgeSubjectArchetypeDef>|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeDomainRegistration|claims|visibility=public|modifiers=|type=System.Collections.Generic.IReadOnlyList<KnowledgeFramework.KnowledgeClaimDef>|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeDomainRegistration|description|visibility=public|modifiers=|type=System.String|constant=<none>
@@ -633,9 +679,11 @@ FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ArchetypesCapability|visibility=p
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ClaimsCapability|visibility=public|modifiers=static,const|type=System.String|constant=claims
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ColonyKnowledgeCapability|visibility=public|modifiers=static,const|type=System.String|constant=colony-knowledge
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ConfidenceCapability|visibility=public|modifiers=static,const|type=System.String|constant=confidence
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ConsumerMigrationCapability|visibility=public|modifiers=static,const|type=System.String|constant=consumer-migration
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ContextsCapability|visibility=public|modifiers=static,const|type=System.String|constant=contextual-knowledge
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|CrossDomainCapability|visibility=public|modifiers=static,const|type=System.String|constant=cross-domain-requirements
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|DiscoveryCapability|visibility=public|modifiers=static,const|type=System.String|constant=discovery-stages
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|DomainAliasesCapability|visibility=public|modifiers=static,const|type=System.String|constant=domain-aliases
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|DomainsCapability|visibility=public|modifiers=static,const|type=System.String|constant=domains
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|EffectsCapability|visibility=public|modifiers=static,const|type=System.String|constant=effects
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|EvidenceCapability|visibility=public|modifiers=static,const|type=System.String|constant=evidence-transactions
@@ -647,16 +695,20 @@ FIELD|KnowledgeFramework.KnowledgeFrameworkApi|LegacyApiVersion|visibility=publi
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|MilestonesCapability|visibility=public|modifiers=static,const|type=System.String|constant=milestones
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ObservationRecipesCapability|visibility=public|modifiers=static,const|type=System.String|constant=observation-recipes
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|PawnKnowledgeCapability|visibility=public|modifiers=static,const|type=System.String|constant=pawn-knowledge
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ReadinessInspectionCapability|visibility=public|modifiers=static,const|type=System.String|constant=readiness-inspection
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|RegistrationOwnershipCapability|visibility=public|modifiers=static,const|type=System.String|constant=registration-ownership
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|RelationshipsCapability|visibility=public|modifiers=static,const|type=System.String|constant=relationships
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|RequirementStagesCapability|visibility=public|modifiers=static,const|type=System.String|constant=requirement-stages
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|RevealCapability|visibility=public|modifiers=static,const|type=System.String|constant=reveals
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|RichEffectRequirementsCapability|visibility=public|modifiers=static,const|type=System.String|constant=rich-effect-requirements
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|SafeRegistrationCapability|visibility=public|modifiers=static,const|type=System.String|constant=safe-registration
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|SecondGenerationApiVersion|visibility=public|modifiers=static,const|type=System.Int32|constant=2
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|SharedExpertiseCapability|visibility=public|modifiers=static,const|type=System.String|constant=shared-expertise
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|StalenessCapability|visibility=public|modifiers=static,const|type=System.String|constant=claim-staleness
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|StructuralRelationsCapability|visibility=public|modifiers=static,const|type=System.String|constant=structural-relations
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|StructuredComparisonCapability|visibility=public|modifiers=static,const|type=System.String|constant=structured-comparison
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|SubjectLifecycleCapability|visibility=public|modifiers=static,const|type=System.String|constant=subject-lifecycle
+FIELD|KnowledgeFramework.KnowledgeFrameworkApi|TargetedInvalidationCapability|visibility=public|modifiers=static,const|type=System.String|constant=targeted-invalidation
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|ThirdGenerationApiVersion|visibility=public|modifiers=static,const|type=System.Int32|constant=3
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|TransmissionCapability|visibility=public|modifiers=static,const|type=System.String|constant=transmission
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|TypedEffectsCapability|visibility=public|modifiers=static,const|type=System.String|constant=typed-effects
@@ -664,6 +716,11 @@ FIELD|KnowledgeFramework.KnowledgeFrameworkApi|TypedMeasurementsCapability|visib
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|UiCapability|visibility=public|modifiers=static,const|type=System.String|constant=domain-ui
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|V2ApiVersion|visibility=public|modifiers=static,const|type=System.Int32|constant=2
 FIELD|KnowledgeFramework.KnowledgeFrameworkApi|WitnessLearningCapability|visibility=public|modifiers=static,const|type=System.String|constant=witness-learning
+FIELD|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|apiVersion|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|globalRevision|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|reason|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeFrameworkReadinessReason|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|registryRevision|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|state|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeFrameworkReadinessState|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeFrameworkSettings|BioPanelEnabled|visibility=public|modifiers=|type=System.Boolean|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeInsightContext|context|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeContextKey|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeInsightContext|domainId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
@@ -710,6 +767,12 @@ FIELD|KnowledgeFramework.KnowledgeInsightRequirement|stageId|visibility=public|m
 FIELD|KnowledgeFramework.KnowledgeInsightRequirement|subjectId|visibility=public|modifiers=|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeInsightRequirement|trackId|visibility=public|modifiers=|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeInsightRequirement|value|visibility=public|modifiers=|type=KnowledgeFramework.KnowledgeClaimValue|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|code|visibility=public|modifiers=readonly|type=KnowledgeFramework.KnowledgeInvalidationResultCode|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|domainId|visibility=public|modifiers=readonly|type=System.String|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|globalRevision|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|invalidatedCount|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|registryRevision|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
+FIELD|KnowledgeFramework.KnowledgeInvalidationResult|requestedCount|visibility=public|modifiers=readonly|type=System.Int32|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeMeasurement|claimId|visibility=public|modifiers=|type=System.String|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeMeasurement|confidenceFactor|visibility=public|modifiers=|type=System.Single|constant=<none>
 FIELD|KnowledgeFramework.KnowledgeMeasurement|context|visibility=public|modifiers=|type=KnowledgeFramework.KnowledgeContextKey|constant=<none>
@@ -1249,6 +1312,12 @@ METHOD|KnowledgeFramework.KnowledgeComparisonService|Compare|visibility=public|m
 METHOD|KnowledgeFramework.KnowledgeComparisonService|RegisterRowProvider|visibility=public|modifiers=static|generic=|return=System.Boolean|params=System.String id;KnowledgeFramework.KnowledgeComparisonRowProvider provider;System.Boolean replace optional=False
 METHOD|KnowledgeFramework.KnowledgeComparisonService|RegisterSchema|visibility=public|modifiers=static|generic=|return=System.Boolean|params=KnowledgeFramework.KnowledgeComparisonSchema schema;System.Boolean replace optional=False
 METHOD|KnowledgeFramework.KnowledgeComparisonService|Schema|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeComparisonSchema|params=System.String id
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|InspectDomainRegistration|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeDomainRegistrationInspection|params=KnowledgeFramework.KnowledgeDomainRegistration registration;KnowledgeFramework.KnowledgeRegistrationOptions options optional=null
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|InvalidateDomain|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeInvalidationResult|params=System.String domainId
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|InvalidateSubjects|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeInvalidationResult|params=System.String domainId;System.Collections.Generic.IEnumerable<System.String> subjectIds
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|InvalidateSubject|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeInvalidationResult|params=System.String domainId;System.String subjectId
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|PrepareRegistration|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeFrameworkReadinessStatus|params=
+METHOD|KnowledgeFramework.KnowledgeConsumerApi|RegisterDomain|visibility=public|modifiers=static|generic=|return=KnowledgeFramework.KnowledgeConsumerRegistrationResult|params=KnowledgeFramework.KnowledgeDomainRegistration registration;KnowledgeFramework.KnowledgeRegistrationOptions options optional=null
 METHOD|KnowledgeFramework.KnowledgeContextKey|Equals|visibility=public|modifiers=override|generic=|return=System.Boolean|params=System.Object obj
 METHOD|KnowledgeFramework.KnowledgeContextKey|Equals|visibility=public|modifiers=virtual,sealed|generic=|return=System.Boolean|params=KnowledgeFramework.KnowledgeContextKey other
 METHOD|KnowledgeFramework.KnowledgeContextKey|GetHashCode|visibility=public|modifiers=override|generic=|return=System.Int32|params=
@@ -1433,6 +1502,8 @@ PROPERTY|KnowledgeFramework.IKnowledgeTypedEffectProvider|Id|type=System.String|
 PROPERTY|KnowledgeFramework.IKnowledgeTypedEffectProvider|Priority|type=System.Int32|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.IKnowledgeUiProvider|DomainId|type=System.String|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeClaimDef|StableId|type=System.String|index=|get=public|set=none
+PROPERTY|KnowledgeFramework.KnowledgeConsumerApi|Readiness|type=KnowledgeFramework.KnowledgeFrameworkReadinessStatus|index=|get=public|set=none
+PROPERTY|KnowledgeFramework.KnowledgeConsumerRegistrationResult|Success|type=System.Boolean|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeContextKey|Empty|type=KnowledgeFramework.KnowledgeContextKey|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeContextKey|IsEmpty|type=System.Boolean|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeContextKey|IsPartial|type=System.Boolean|index=|get=public|set=none
@@ -1448,6 +1519,8 @@ PROPERTY|KnowledgeFramework.KnowledgeFacetDef|StableId|type=System.String|index=
 PROPERTY|KnowledgeFramework.KnowledgeFacetSnapshotV2|EventCounts|type=System.Collections.Generic.IReadOnlyDictionary<System.String,System.Int32>|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeFrameworkApi|ReleaseVersion|type=System.String|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeFrameworkMod|Settings|type=KnowledgeFramework.KnowledgeFrameworkSettings|index=|get=public|set=private
+PROPERTY|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|IsReady|type=System.Boolean|index=|get=public|set=none
+PROPERTY|KnowledgeFramework.KnowledgeInvalidationResult|Success|type=System.Boolean|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeMilestoneDef|StableId|type=System.String|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeMilestoneTrackDef|StableId|type=System.String|index=|get=public|set=none
 PROPERTY|KnowledgeFramework.KnowledgeObservationDef|StableId|type=System.String|index=|get=public|set=none
@@ -1502,7 +1575,10 @@ TYPE|KnowledgeFramework.KnowledgeComparisonRow|kind=class|visibility=public|modi
 TYPE|KnowledgeFramework.KnowledgeComparisonSchema|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeComparisonService|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeComparisonSnapshot|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeConsumerApi|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeConsumerMigration|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeConsumerRegistrationResultCode|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
+TYPE|KnowledgeFramework.KnowledgeConsumerRegistrationResult|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeContextFallbackMode|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
 TYPE|KnowledgeFramework.KnowledgeContextKey|kind=struct|visibility=public|modifiers=sealed|base=System.ValueType|interfaces=System.IEquatable<KnowledgeFramework.KnowledgeContextKey>|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeContextQuery|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
@@ -1513,6 +1589,9 @@ TYPE|KnowledgeFramework.KnowledgeDiagnostics|kind=class|visibility=public|modifi
 TYPE|KnowledgeFramework.KnowledgeDiscovery|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeDomainDefinition|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeDomainDef|kind=class|visibility=public|modifiers=sealed|base=Verse.Def|interfaces=System.IEquatable<Verse.Def>|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeDomainOwnerRelation|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
+TYPE|KnowledgeFramework.KnowledgeDomainRegistrationInspection|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeDomainRegistrationState|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
 TYPE|KnowledgeFramework.KnowledgeDomainRegistration|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeDomainRegistry|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeEffectAccumulator|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
@@ -1538,6 +1617,9 @@ TYPE|KnowledgeFramework.KnowledgeFacetSnapshotV2|kind=class|visibility=public|mo
 TYPE|KnowledgeFramework.KnowledgeFrameworkApi|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeFrameworkDebugActions|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeFrameworkMod|kind=class|visibility=public|modifiers=sealed|base=Verse.Mod|interfaces=|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeFrameworkReadinessReason|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
+TYPE|KnowledgeFramework.KnowledgeFrameworkReadinessState|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
+TYPE|KnowledgeFramework.KnowledgeFrameworkReadinessStatus|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeFrameworkSettings|kind=class|visibility=public|modifiers=sealed|base=Verse.ModSettings|interfaces=Verse.IExposable|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeFrameworkStartup|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeFrameworkV2DebugActions|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
@@ -1549,6 +1631,8 @@ TYPE|KnowledgeFramework.KnowledgeInsightProgress|kind=class|visibility=public|mo
 TYPE|KnowledgeFramework.KnowledgeInsightRequirement|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeInsightScope|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
 TYPE|KnowledgeFramework.KnowledgeInsightService|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
+TYPE|KnowledgeFramework.KnowledgeInvalidationResultCode|kind=enum|visibility=public|modifiers=sealed|base=System.Enum|interfaces=System.IComparable,System.IConvertible,System.IFormattable|enumUnderlying=System.Int32|generic=
+TYPE|KnowledgeFramework.KnowledgeInvalidationResult|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeMath|kind=class|visibility=public|modifiers=static|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeMeasurement|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=
 TYPE|KnowledgeFramework.KnowledgeMenuModel|kind=class|visibility=public|modifiers=sealed|base=System.Object|interfaces=|enumUnderlying=|generic=

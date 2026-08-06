@@ -36,11 +36,13 @@ namespace KnowledgeFramework
         private static readonly Dictionary<string, List<KnowledgeRelationshipDef>> RelationshipsByTarget = new Dictionary<string, List<KnowledgeRelationshipDef>>(StringComparer.Ordinal);
         private static IReadOnlyCollection<KnowledgeSchema> schemaSnapshot = Array.Empty<KnowledgeSchema>();
         private static bool defsBuilt;
+        private static bool defsBuildInProgress;
         private static int revision;
 
         public static event Action<KnowledgeSubjectSnapshot> SubjectChanged;
 
         public static int Revision => revision;
+        internal static bool DefSchemasReady => defsBuilt;
         public static IReadOnlyCollection<KnowledgeSchema> SchemasSnapshot => schemaSnapshot;
         public static IReadOnlyList<KnowledgeValidationIssue> ValidationIssues => new ReadOnlyCollection<KnowledgeValidationIssue>(Issues.ToList());
 
@@ -59,25 +61,41 @@ namespace KnowledgeFramework
 
         public static void BuildDefSchemas()
         {
-            if (defsBuilt) return;
+            if (defsBuilt || defsBuildInProgress) return;
             Stopwatch stopwatch = Stopwatch.StartNew();
-            defsBuilt = true;
-            foreach (KnowledgeDomainDef def in DefDatabase<KnowledgeDomainDef>.AllDefsListForReading)
-                RegisterSchema(KnowledgeSchema.FromDef(def), new KnowledgeRegistrationOptions
+            defsBuildInProgress = true;
+            try
+            {
+                foreach (KnowledgeDomainDef def in DefDatabase<KnowledgeDomainDef>.AllDefsListForReading)
                 {
-                    source = def.modContentPack?.PackageId ?? "Defs",
-                    conflict = KnowledgeRegistrationConflict.Reject
-                });
-            foreach (KnowledgeSubjectDef subject in DefDatabase<KnowledgeSubjectDef>.AllDefsListForReading)
-                RegisterStaticSubject(subject);
-            foreach (KnowledgeContextTypeDef context in DefDatabase<KnowledgeContextTypeDef>.AllDefsListForReading)
-                KnowledgeContextRegistry.RegisterType(context, true);
-            foreach (KnowledgeSubjectRelationTypeDef relationType in DefDatabase<KnowledgeSubjectRelationTypeDef>.AllDefsListForReading)
-                KnowledgeRelationService.RegisterType(relationType, true);
-            foreach (KnowledgeExpertiseNamespaceDef expertiseNamespace in DefDatabase<KnowledgeExpertiseNamespaceDef>.AllDefsListForReading)
-                KnowledgeSharedExpertiseService.RegisterNamespace(expertiseNamespace, true);
-            RebuildDependencyIndexes();
-            KnowledgeDiagnostics.RecordSchemaBuild(stopwatch.ElapsedTicks, Schemas.Count, StaticSubjects.Count);
+                    if (!RegisterSchema(KnowledgeSchema.FromDef(def), new KnowledgeRegistrationOptions
+                    {
+                        source = def.modContentPack?.PackageId ?? "Defs",
+                        conflict = KnowledgeRegistrationConflict.Reject
+                    })) throw new InvalidOperationException("A domain definition could not be registered.");
+                }
+                foreach (KnowledgeSubjectDef subject in DefDatabase<KnowledgeSubjectDef>.AllDefsListForReading)
+                    RegisterStaticSubject(subject);
+                foreach (KnowledgeContextTypeDef context in DefDatabase<KnowledgeContextTypeDef>.AllDefsListForReading)
+                    KnowledgeContextRegistry.RegisterType(context, true);
+                foreach (KnowledgeSubjectRelationTypeDef relationType in DefDatabase<KnowledgeSubjectRelationTypeDef>.AllDefsListForReading)
+                    KnowledgeRelationService.RegisterType(relationType, true);
+                foreach (KnowledgeExpertiseNamespaceDef expertiseNamespace in DefDatabase<KnowledgeExpertiseNamespaceDef>.AllDefsListForReading)
+                    KnowledgeSharedExpertiseService.RegisterNamespace(expertiseNamespace, true);
+                RebuildDependencyIndexes();
+                defsBuilt = true;
+                KnowledgeDiagnostics.RecordSchemaBuild(stopwatch.ElapsedTicks, Schemas.Count, StaticSubjects.Count);
+            }
+            catch (Exception exception)
+            {
+                defsBuilt = false;
+                KnowledgeFrameworkLifecycle.SchemaBuildFailed();
+                KnowledgeLog.ErrorOnce("schema-build", "Knowledge Framework schema construction failed.", exception);
+            }
+            finally
+            {
+                defsBuildInProgress = false;
+            }
         }
 
         public static bool RegisterDomain(KnowledgeDomainRegistration registration, KnowledgeRegistrationOptions options = null)
@@ -612,6 +630,20 @@ namespace KnowledgeFramework
             revision++;
             RebuildSchemaSnapshot();
             KnowledgeUiCache.Reset();
+        }
+
+        internal static int InvalidateSubjectCaches(string domainId, IReadOnlyCollection<string> subjectIds)
+        {
+            domainId = ResolveDomainId(domainId);
+            if (domainId.NullOrEmpty() || subjectIds == null || subjectIds.Count == 0) return 0;
+            HashSet<string> targets = new HashSet<string>(subjectIds.Where(value => !value.NullOrEmpty()), StringComparer.Ordinal);
+            string prefix = domainId + "\n";
+            foreach (string key in DynamicSubjects.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal) &&
+                targets.Contains(key.Substring(prefix.Length))).ToList()) DynamicSubjects.Remove(key);
+            revision++;
+            RebuildSchemaSnapshot();
+            KnowledgeUiCache.Reset();
+            return targets.Count;
         }
 
         private static bool RegisterSchema(KnowledgeSchema schema, KnowledgeRegistrationOptions options)

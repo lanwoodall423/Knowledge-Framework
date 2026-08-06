@@ -181,6 +181,8 @@ namespace KnowledgeFramework
             KnowledgeUiCache.Invalidate(Array.Empty<KnowledgeChange>());
         }
 
+        internal static void InvalidateConsumerCaches() => InvalidatePresentationSnapshots();
+
         public static KnowledgeContextKey Parent(KnowledgeContextKey context)
         {
             if (context.IsEmpty) return KnowledgeContextKey.Empty;

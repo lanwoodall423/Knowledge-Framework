@@ -49,9 +49,15 @@ function Get-SourceTreeHash {
 
     $stream = New-Object IO.MemoryStream
     $utf8 = New-Object Text.UTF8Encoding($false)
+    $textExtensions = @('.cs', '.csproj', '.props', '.targets', '.xml', '.json', '.md', '.ps1', '.txt', '.config', '.sln', '.yml', '.yaml', '.gitignore')
     foreach ($file in $sortedFiles) {
         $pathBytes = $utf8.GetBytes($file.Relative)
         $contentBytes = [IO.File]::ReadAllBytes($file.Full)
+        if ($textExtensions -contains $([IO.Path]::GetExtension($file.Full).ToLowerInvariant())) {
+            # Canonicalize text line endings so Windows and Linux checkout bytes produce the same release hash.
+            $text = [Text.Encoding]::UTF8.GetString($contentBytes).Replace("`r`n", "`n").Replace("`r", "`n")
+            $contentBytes = $utf8.GetBytes($text)
+        }
         $stream.Write($pathBytes, 0, $pathBytes.Length)
         $stream.WriteByte(0)
         $stream.Write($contentBytes, 0, $contentBytes.Length)

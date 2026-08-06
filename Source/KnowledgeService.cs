@@ -102,6 +102,7 @@ namespace KnowledgeFramework
             RebuildV2Indexes();
             RebuildV3Indexes();
             MigrateLegacyV1();
+            KnowledgeFrameworkLifecycle.GameInitialized();
         }
 
         internal ColonyKnowledgeSaveRecord Colony(string domainId, string subjectId, bool create)
