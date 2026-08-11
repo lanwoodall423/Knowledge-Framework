@@ -140,13 +140,35 @@ $unexpectedAssemblyFiles = @($assemblyFiles | Where-Object { $allowedAssemblyFil
 if ($unexpectedAssemblyFiles.Count -eq 0) { Pass-Check -Name 'release-output-layout' -Detail (($assemblyFiles | ForEach-Object Name) -join ', ') }
 else { Fail-Check -Name 'release-output-layout' -Detail ('unexpected ' + (($unexpectedAssemblyFiles | ForEach-Object Name) -join ', ')) }
 
-$transientDirectories = @(Get-ChildItem -LiteralPath $root -Directory -Recurse | Where-Object {
-    $_.FullName -notmatch '[\\/]\.git[\\/]' -and $_.Name -in @('bin', 'obj', 'Build')
+$trackedTransient = @(& git -C $root ls-files | Where-Object {
+    $_ -match '(^|[\\/])(bin|obj|Build)([\\/]|$)' -or $_ -match '\.pdb$'
 })
-$pdbFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -Filter '*.pdb' | Where-Object { $_.FullName -notmatch '[\\/]\.git[\\/]' })
-if ($transientDirectories.Count -eq 0 -and $pdbFiles.Count -eq 0) { Pass-Check -Name 'transient-artifacts' -Detail 'none packaged or tracked in the worktree' }
+$packageTransient = New-Object Collections.Generic.List[string]
+$zipFiles = @(Get-ChildItem -LiteralPath $root -File -Recurse -Filter '*.zip' | Where-Object {
+    $_.FullName -notmatch '[\\/]\.git[\\/]'
+})
+if ($zipFiles.Count -gt 0) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    foreach ($zipFile in $zipFiles) {
+        $archive = [IO.Compression.ZipFile]::OpenRead($zipFile.FullName)
+        try {
+            foreach ($entry in $archive.Entries) {
+                if ($entry.FullName -match '(^|[\\/])(bin|obj|Build)([\\/]|$)' -or $entry.FullName -match '\.pdb$') {
+                    $packageTransient.Add(($zipFile.Name + ':' + $entry.FullName)) | Out-Null
+                }
+            }
+        }
+        finally { $archive.Dispose() }
+    }
+}
+if ($trackedTransient.Count -eq 0 -and $packageTransient.Count -eq 0) {
+    $ignoredLocal = @(Get-ChildItem -LiteralPath $root -Directory -Recurse -ErrorAction SilentlyContinue | Where-Object {
+        $_.FullName -notmatch '[\\/]\.git[\\/]' -and $_.Name -in @('bin', 'obj', 'Build')
+    }).Count
+    Pass-Check -Name 'transient-artifacts' -Detail ("tracked=0 packaged=0 ignored-local-directories={0}" -f $ignoredLocal)
+}
 else {
-    $details = @($transientDirectories | ForEach-Object FullName) + @($pdbFiles | ForEach-Object FullName)
+    $details = @($trackedTransient) + @($packageTransient)
     Fail-Check -Name 'transient-artifacts' -Detail ($details -join ', ')
 }
 
