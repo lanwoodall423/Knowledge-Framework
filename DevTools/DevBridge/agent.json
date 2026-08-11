@@ -1,9 +1,10 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "packageId": "lan.knowledgeframework",
-  "adapterDirectory": "DevTools/BridgeAdapters",
-  "adapterSource": "DevTools/BridgeAdapter/KnowledgeFrameworkBridgeAdapter.cs",
-  "buildEntrypoint": "DevTools/Build-HotBridgeAdapter.ps1",
-  "validateEntrypoint": "DevTools/Test-BridgeAdapter.ps1",
-  "runtimeGuide": "DevTools/DEVBRIDGE_AGENT.md"
+  "coordinator": "DevBridge2-lifecycle-only",
+  "coordinatorCommands": ["status", "test begin", "test end", "restart", "wait-ready"],
+  "diagnosticOwnership": "KnowledgeFramework",
+  "adapterRegistration": false,
+  "historicalAdapterSource": "DevTools/BridgeAdapter/KnowledgeFrameworkBridgeAdapter.cs",
+  "runtimeGuide": "DevTools/DEVBRIDGE2_AGENT.md"
 }
