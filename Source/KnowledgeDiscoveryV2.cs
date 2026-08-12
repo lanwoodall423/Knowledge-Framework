@@ -64,7 +64,11 @@ namespace KnowledgeFramework
             KnowledgeContextKey resolvedContext = KnowledgeContextKey.Empty;
             bool usedFallback = false;
             KnowledgeStageProvenance contextualProvenance = KnowledgeStageProvenance.None;
-            if (schema.stages.Any(item => item.contextSensitive))
+            // Context-sensitive progress is a contextual view. Do not let an
+            // empty/global query manufacture or select that view; global
+            // context-sensitive progress is considered only when a caller is
+            // asking for a non-empty context and needs global fallback.
+            if (!context.IsEmpty && schema.stages.Any(item => item.contextSensitive))
             {
                 foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, fallback))
                 {
@@ -93,6 +97,13 @@ namespace KnowledgeFramework
             }
             bool contextualSelected = IsLater(schema, contextualStageId, globalStageId) ||
                 contextualStageId == globalStageId && !contextualStageId.NullOrEmpty();
+            // A global fallback must not replace the final non-contextual
+            // stage. This keeps a fully satisfied global stage authoritative
+            // while still allowing a context-sensitive global fallback to
+            // extend a partial global stage.
+            if (contextualSelected && !context.IsEmpty && resolvedContext.IsEmpty &&
+                IsFinalNonContextualStage(schema, globalStageId))
+                contextualSelected = false;
             string selected = contextualSelected ? contextualStageId : globalStageId;
             bool selectedContextual = !selected.NullOrEmpty() && schema.Stage(selected)?.contextSensitive == true;
             KnowledgeStageProvenance selectedProvenance = contextualSelected ? contextualProvenance : globalProvenance;
@@ -221,6 +232,15 @@ namespace KnowledgeFramework
             if (candidate.NullOrEmpty()) return false;
             if (current.NullOrEmpty()) return true;
             return (schema.Stage(candidate)?.order ?? int.MinValue) > (schema.Stage(current)?.order ?? int.MinValue);
+        }
+
+        private static bool IsFinalNonContextualStage(KnowledgeSchema schema, string stageId)
+        {
+            KnowledgeStageSchema selected = schema?.Stage(stageId);
+            if (selected == null || selected.contextSensitive) return false;
+            int finalOrder = schema.stages.Where(item => item != null && !item.contextSensitive)
+                .Select(item => item.order).DefaultIfEmpty(int.MinValue).Max();
+            return selected.order >= finalOrder;
         }
 
         private static bool StageMet(KnowledgeSchema schema, string actualId, string requiredId)

@@ -207,8 +207,11 @@ namespace KnowledgeFramework
         {
             if (context.IsEmpty) return "KnowledgeFramework_GlobalContext".Translate();
             string value = KnowledgeContextRegistry.ValueLabel(context, domainId, subjectId, pawn, scope)?.Trim();
+            // Presentation providers return already-human-readable values. A
+            // dynamic value is not a translation key; translating it can
+            // transform arbitrary provider labels into unrelated text.
             return value.NullOrEmpty() || value == context.stableId || value == context.typeId || value == context.ToString()
-                ? "KnowledgeFramework_UnknownContextValue".Translate() : value.Translate();
+                ? "KnowledgeFramework_UnknownContextValue".Translate() : value;
         }
 
         public static string ContextSelection(KnowledgeContextKey context, string domainId = null, string subjectId = null,
@@ -221,8 +224,16 @@ namespace KnowledgeFramework
 
         public static string Rank(KnowledgeRank rank) => ("KnowledgeFramework_Rank_" + rank).Translate();
 
-        private static string Label(string value, string fallbackKey) =>
-            value.NullOrEmpty() ? fallbackKey.Translate() : value.Translate();
+        private static string Label(string value, string fallbackKey)
+        {
+            if (value.NullOrEmpty()) return fallbackKey.Translate();
+            // Registration labels may be either localization keys or literal
+            // consumer text. Only translate keys present in the active language;
+            // arbitrary labels such as "Size" must remain unchanged.
+            bool looksLikeTranslationKey = value.IndexOf('_') >= 0 || value.IndexOf('.') >= 0;
+            return looksLikeTranslationKey && LanguageDatabase.activeLanguage != null && LanguageDatabase.activeLanguage.HaveTextForKey(value, false)
+                ? value.Translate() : value;
+        }
     }
 
     public static class KnowledgeBrowserModels
@@ -253,6 +264,14 @@ namespace KnowledgeFramework
             if (filter == null || context.IsEmpty || context.IsPartial) return context.IsEmpty;
             Pawn pawn = filter.scope == KnowledgeScope.Colony ? null : filter.pawn;
             if (KnowledgeContextRegistry.IsProviderKnownContext(context, filter.domainId, subjectId, pawn, filter.scope)) return true;
+            // A child context can legitimately inherit knowledge from an
+            // authorized parent context. Authorize the requested child when
+            // its fallback chain contains a provider-known parent; otherwise
+            // browser queries would silently collapse to global knowledge.
+            foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, filter.fallback))
+                if (!candidate.IsEmpty && !candidate.Equals(context) &&
+                    KnowledgeContextRegistry.IsProviderKnownContext(candidate, filter.domainId, subjectId, pawn, filter.scope))
+                    return true;
             KnowledgeSchema schema = KnowledgeRegistry.Schema(filter.domainId);
             if (schema == null) return false;
 
@@ -385,7 +404,7 @@ namespace KnowledgeFramework
                 resolvedContext = stage.resolvedContext;
                 hasResolvedContext = true;
             }
-            if (!filter.includeUnknown && !presentation.identified && completeness <= 0f) return null;
+            if (!filter.developerMode && !filter.includeUnknown && !presentation.identified && completeness <= 0f) return null;
             string displayLabel = KnowledgeBrowserLabels.SubjectLabel(subject, presentation, filter.developerMode);
             string displayDescription = KnowledgeBrowserLabels.SubjectDescription(subject, presentation, filter.developerMode);
             string badge = subject.state == KnowledgeSubjectState.Archived || subject.state == KnowledgeSubjectState.Retired
@@ -436,10 +455,10 @@ namespace KnowledgeFramework
             KnowledgeRevealResult presentation = KnowledgeDiscovery.Present(domainId, subjectId, facet.id, filter.pawn, filter.scope,
                 filter.context, filter.fallback);
             if (presentation.revealed) return true;
-            // includeHidden is a model/debug escape hatch, never a normal player
-            // filter. Keeping this gate here makes counts, claims, and details
-            // agree about unrevealed content.
-            return filter.developerMode && filter.includeHidden;
+            // Developer mode is an explicit debug escape hatch. A normal
+            // includeHidden request remains harmless unless the caller also
+            // has developer mode, so player-facing filters cannot disclose it.
+            return filter.developerMode;
         }
 
         private static KnowledgeStageSchema NextStage(KnowledgeSchema schema, string currentStageId)

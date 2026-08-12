@@ -293,9 +293,18 @@ namespace KnowledgeFramework
                 if (!type.inverseTypeId.NullOrEmpty() && Type(type.inverseTypeId) == null) issues.Add("relation inverse type missing: " + type.StableId);
             }
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
-            if (component != null && KnowledgeGraphValidation.HasCycle(component.RelationRecordsV3(null).Where(item => Type(item.relationTypeId)?.parentage == true)
-                .Select(item => new KeyValuePair<string, string>(item.domainId + ":" + item.fromSubjectId, item.toDomainId + ":" + item.toSubjectId))))
-                issues.Add("structural relation cycle");
+            if (component != null)
+            {
+                foreach (IGrouping<string, KnowledgeSubjectRelationStateRecord> group in component.RelationRecordsV3(null)
+                    .Where(item => Type(item.relationTypeId)?.parentage == true)
+                    .GroupBy(item => item.contextTypeId + "\n" + item.contextId))
+                    if (KnowledgeGraphValidation.HasCycle(group.Select(item => new KeyValuePair<string, string>(
+                        item.domainId + ":" + item.fromSubjectId, item.toDomainId + ":" + item.toSubjectId))))
+                    {
+                        issues.Add("structural relation cycle");
+                        break;
+                    }
+            }
             return issues;
         }
 
@@ -314,7 +323,8 @@ namespace KnowledgeFramework
         {
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             if (component == null) return true;
-            List<KeyValuePair<string, string>> edges = component.RelationRecordsV3(null).Where(item => Type(item.relationTypeId)?.parentage == true)
+            List<KeyValuePair<string, string>> edges = component.RelationRecordsV3(null).Where(item => Type(item.relationTypeId)?.parentage == true &&
+                item.contextTypeId == relation.context.typeId && item.contextId == relation.context.stableId)
                 .Select(item => new KeyValuePair<string, string>(RelationNode(item.domainId, item.fromSubjectId),
                     RelationNode(item.toDomainId, item.toSubjectId))).ToList();
             edges.Add(new KeyValuePair<string, string>(RelationNode(relation.domainId, relation.fromSubjectId),

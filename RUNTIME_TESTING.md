@@ -76,6 +76,24 @@ scenario, open the Development/Debug menu, and invoke `Run bounded V3 stress
 validation`. If the map or pawn requirement is unavailable, record BLOCKED/
 UNAVAILABLE and do not substitute a synthetic pass.
 
+## Automatic In-Game Behavioral Verification
+
+The mod-owned V2/V3 behavioral suite can run automatically in the disposable
+DevBridge2 quicktest map. The wrapper below builds the mod, writes a one-shot
+request marker, asks DevBridge2 to restart and wait for a playable map, then
+waits for the report written by Knowledge Framework itself:
+
+```powershell
+& .\DevTools\Run-KnowledgeFrameworkInGameTests.ps1
+```
+
+DevBridge2 only coordinates the process, generation, readiness, and test lease;
+all assertions execute in `KnowledgeFrameworkVerification.RunGameTests` inside
+the mod assembly. The report is written to
+`Config/KnowledgeFramework_AutomaticTest.txt`. The bounded stress scenario is
+not folded into this suite because its required 20-live-pawn fixture must remain
+an explicit BLOCKED/UNAVAILABLE result when that fixture is absent.
+
 ## Bounded Stress Action
 
 The development-only action is implemented in

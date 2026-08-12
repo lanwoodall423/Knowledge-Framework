@@ -295,15 +295,19 @@ namespace KnowledgeFramework
             foreach (KnowledgeMilestoneConditionSample sample in plan.milestones)
                 if (!ValidateMilestone(migration, subjects, sample, out failure)) return false;
 
-            List<KeyValuePair<string, string>> relationEdges = component.RelationRecordsV3(null)
+            Dictionary<string, List<KeyValuePair<string, string>>> relationEdges = component.RelationRecordsV3(null)
                 .Where(item => item != null && KnowledgeRelationService.Type(item.relationTypeId)?.parentage == true)
-                .Select(RelationEdge).ToList();
+                .GroupBy(item => item.contextTypeId + "\n" + item.contextId)
+                .ToDictionary(group => group.Key, group => group.Select(RelationEdge).ToList(), StringComparer.Ordinal);
             foreach (KnowledgeSubjectRelation relation in plan.relations)
             {
                 if (!ValidateRelation(migration, subjects, relation, out failure)) return false;
-                AddRelationEdges(relationEdges, relation);
+                string contextKey = relation.context.typeId + "\n" + relation.context.stableId;
+                if (!relationEdges.TryGetValue(contextKey, out List<KeyValuePair<string, string>> edges))
+                    relationEdges[contextKey] = edges = new List<KeyValuePair<string, string>>();
+                AddRelationEdges(edges, relation);
             }
-            if (KnowledgeGraphValidation.HasCycle(relationEdges))
+            if (relationEdges.Values.Any(KnowledgeGraphValidation.HasCycle))
             {
                 KnowledgeSubjectRelation relation = plan.relations.LastOrDefault();
                 failure = Failure("validate relation cycle", relation?.domainId ?? migration.domainId,
@@ -643,6 +647,12 @@ namespace KnowledgeFramework
                 KnowledgeMilestoneConditionSample prepared = PrepareMilestone(plan.migration, sample);
                 try
                 {
+                    if (!prepared.conditionMet)
+                    {
+                        failure = Failure("report milestone", prepared.domainId, prepared.subjectId,
+                            "Migration milestone condition is not met.");
+                        return false;
+                    }
                     if (!KnowledgeMilestoneService.ReportCondition(prepared))
                     {
                         failure = Failure("report milestone", prepared.domainId, prepared.subjectId,

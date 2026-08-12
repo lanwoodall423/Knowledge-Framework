@@ -469,11 +469,15 @@ namespace KnowledgeFramework
 
         internal static void GameInitialized()
         {
-            initializedGame = Verse.Current.Game;
+            Verse.Game currentGame = Verse.Current.Game;
+            if (!ReferenceEquals(currentGame, observedGame)) schemaBuildFailed = false;
+            observedGame = currentGame;
+            initializedGame = currentGame;
         }
 
         internal static void SchemaBuildFailed()
         {
+            observedGame = Verse.Current.Game;
             schemaBuildFailed = true;
         }
 

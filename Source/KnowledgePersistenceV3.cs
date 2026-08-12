@@ -1147,10 +1147,19 @@ namespace KnowledgeFramework
             AccrualCompatibilityV3(new[] { legacyKey });
 
         internal KnowledgeAccrualStateRecord AccrualCompatibilityV3(IEnumerable<string> legacyKeys)
+            => AccrualCompatibilityV3(legacyKeys, null);
+
+        internal KnowledgeAccrualStateRecord AccrualCompatibilityV3(IEnumerable<string> legacyKeys, string policyNamespace)
         {
             HashSet<string> keys = new HashSet<string>((legacyKeys ?? Array.Empty<string>()).Where(item => !item.NullOrEmpty()), StringComparer.Ordinal);
-            List<KnowledgeAccrualStateRecord> matches = accrualV3.Where(item => item != null &&
+            List<KnowledgeAccrualStateRecord> allMatches = accrualV3.Where(item => item != null &&
                 (keys.Contains(item.key) || keys.Contains(item.legacyKey))).OrderBy(item => item.key, StringComparer.Ordinal).ToList();
+            List<KnowledgeAccrualStateRecord> exactMatches = policyNamespace.NullOrEmpty() ? new List<KnowledgeAccrualStateRecord>() :
+                allMatches.Where(item => item.policyNamespace == policyNamespace || item.observationId == policyNamespace).ToList();
+            // Old keys did not encode the policy. Prefer a record whose
+            // normalized metadata identifies the requested policy; only fall
+            // back to ambiguous legacy records when no exact candidate exists.
+            List<KnowledgeAccrualStateRecord> matches = exactMatches.Count > 0 ? exactMatches : allMatches;
             if (matches.Count == 0) return null;
             KnowledgeAccrualStateRecord result = matches[0];
             foreach (KnowledgeAccrualStateRecord duplicate in matches.Skip(1).ToList())

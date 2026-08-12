@@ -718,6 +718,25 @@ namespace KnowledgeFramework
             return domainId;
         }
 
+        internal static IReadOnlyList<string> DomainAliasesFor(string canonicalDomainId)
+        {
+            canonicalDomainId = ResolveDomainId(canonicalDomainId);
+            if (canonicalDomainId.NullOrEmpty()) return Array.Empty<string>();
+            return DomainAliases.Keys.Where(item => item != null && ResolveDomainId(item) == canonicalDomainId)
+                .Distinct(StringComparer.Ordinal).ToList();
+        }
+
+        internal static IReadOnlyList<string> SubjectAliasesFor(string domainId, string canonicalSubjectId)
+        {
+            string canonicalDomainId = ResolveDomainId(domainId);
+            canonicalSubjectId = ResolveSubjectId(canonicalDomainId, canonicalSubjectId);
+            if (canonicalDomainId.NullOrEmpty() || canonicalSubjectId.NullOrEmpty()) return Array.Empty<string>();
+            return SubjectAliases.Keys.Select(item => item?.Split(new[] { '\n' }, 2))
+                .Where(parts => parts != null && parts.Length == 2 && ResolveDomainId(parts[0]) == canonicalDomainId &&
+                    ResolveSubjectId(canonicalDomainId, parts[1]) == canonicalSubjectId)
+                .Select(parts => parts[1]).Distinct(StringComparer.Ordinal).ToList();
+        }
+
         internal static string ResolveSubjectId(string domainId, string subjectId)
         {
             if (subjectId == null) return null;

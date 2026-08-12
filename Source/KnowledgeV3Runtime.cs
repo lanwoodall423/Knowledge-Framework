@@ -324,18 +324,19 @@ namespace KnowledgeFramework
             if (schema == null || claim == null || component == null)
                 return Empty(domainId, subjectId, facetId, claimId, pawn, scope, context);
             bool colony = scope == KnowledgeScope.Colony;
+            Pawn owner = colony ? null : pawn;
             KnowledgeClaimStateRecord record = null;
             KnowledgeContextKey selectedContext = context;
             foreach (KnowledgeContextKey candidate in KnowledgeContextRegistry.Chain(context, fallback))
             {
-                record = component.ClaimV3(domainId, subjectId, facetId, claim.StableId, pawn, colony, candidate, false);
+                record = component.ClaimV3(domainId, subjectId, facetId, claim.StableId, owner, colony, candidate, false);
                 if (record != null && record.measurements.Count > 0)
                 {
                     selectedContext = candidate;
                     break;
                 }
             }
-            return Aggregate(domainId, subjectId, facetId, claim, claim.StableId, pawn, scope, selectedContext, record);
+            return Aggregate(domainId, subjectId, facetId, claim, claim.StableId, owner, scope, selectedContext, record);
         }
 
         public static IReadOnlyList<KnowledgeClaimSnapshot> ForSubject(string domainId, string subjectId, string facetId = null,
@@ -1046,7 +1047,7 @@ namespace KnowledgeFramework
             string key = Key(input, policy, policyNamespace);
             GameComponent_KnowledgeFramework component = GameComponent_KnowledgeFramework.Current;
             KnowledgeAccrualStateRecord record = component?.AccrualV3(key, false);
-            KnowledgeAccrualStateRecord legacyState = component?.AccrualCompatibilityV3(LegacyKeys(input, policy));
+            KnowledgeAccrualStateRecord legacyState = component?.AccrualCompatibilityV3(LegacyKeys(input, policy), policyNamespace);
             if (legacyState != null)
             {
                 // A pre-V4 record can also remain beside a newly written
@@ -1062,10 +1063,12 @@ namespace KnowledgeFramework
             int pending = planned.TryGetValue(backingKey, out int plannedCount) ? plannedCount : 0;
             int projectedBefore = existing + pending;
             string sourceKey = backingKey + "\nsource\n" + input.sourceInstanceId;
-            bool sourceSeen = record != null && (record.sourceInstanceIds ?? new List<string>()).Contains(input.sourceInstanceId) ||
-                record != null && record.sourceInstanceId == input.sourceInstanceId || plannedSources.Contains(sourceKey);
+            bool sourceHistoryComplete = record == null || record.outcomeHistoryComplete;
+            bool sourceSeen = record != null && sourceHistoryComplete &&
+                ((record.sourceInstanceIds ?? new List<string>()).Contains(input.sourceInstanceId) ||
+                record.sourceInstanceId == input.sourceInstanceId) || plannedSources.Contains(sourceKey);
             string currentContext = KnowledgeContextForState(input);
-            bool contextSeen = record != null && (record.contextKeys ?? new List<string>()).Contains(currentContext) ||
+            bool contextSeen = record != null && record.count > 0 && (record.contextKeys ?? new List<string>()).Contains(currentContext) ||
                 plannedContexts.Contains(backingKey + "\ncontext\n" + currentContext);
             int now = CurrentTick();
             int previousTick = plannedLastTicks.TryGetValue(backingKey, out int plannedTick) ? plannedTick : record?.lastTick ?? 0;
@@ -1137,7 +1140,7 @@ namespace KnowledgeFramework
             KnowledgeAccrualStateRecord record = input.accrualBackingKey.NullOrEmpty()
                 ? component.AccrualV3(key, false) : component.AccrualV3(input.accrualBackingKey, false);
             bool compatibilityState = record != null && !record.outcomeHistoryComplete;
-            KnowledgeAccrualStateRecord legacy = component.AccrualCompatibilityV3(LegacyKeys(input, policy));
+            KnowledgeAccrualStateRecord legacy = component.AccrualCompatibilityV3(LegacyKeys(input, policy), definition.StableId);
             if (legacy != null && legacy != record)
             {
                 record = legacy;
@@ -1308,12 +1311,18 @@ namespace KnowledgeFramework
         {
             if (input == null || policy == null) yield break;
             HashSet<string> keys = new HashSet<string>(StringComparer.Ordinal);
-            string raw = LegacyKey(input, policy, input.domainId, input.subjectId);
-            if (!raw.NullOrEmpty() && keys.Add(raw)) yield return raw;
             string domainId = KnowledgeRegistry.ResolveDomainId(input.domainId) ?? input.domainId;
             string subjectId = KnowledgeRegistry.ResolveSubjectId(domainId, input.subjectId) ?? input.subjectId;
-            string canonical = LegacyKey(input, policy, domainId, subjectId);
-            if (!canonical.NullOrEmpty() && keys.Add(canonical)) yield return canonical;
+            List<string> domains = new List<string> { input.domainId, domainId };
+            domains.AddRange(KnowledgeRegistry.DomainAliasesFor(domainId));
+            List<string> subjects = new List<string> { input.subjectId, subjectId };
+            subjects.AddRange(KnowledgeRegistry.SubjectAliasesFor(domainId, subjectId));
+            foreach (string candidateDomain in domains.Distinct(StringComparer.Ordinal))
+                foreach (string candidateSubject in subjects.Distinct(StringComparer.Ordinal))
+                {
+                    string candidate = LegacyKey(input, policy, candidateDomain, candidateSubject);
+                    if (!candidate.NullOrEmpty() && keys.Add(candidate)) yield return candidate;
+                }
         }
 
         private static string LegacyKey(KnowledgeObservation input, KnowledgeAccrualPolicy policy, string domainId, string subjectId)
