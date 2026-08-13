@@ -91,6 +91,7 @@ $assemblyName = [Reflection.AssemblyName]::GetAssemblyName($assemblyFull)
 $fileInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyFull)
 $dllHash = (Get-FileHash -LiteralPath $assemblyFull -Algorithm SHA256).Hash.ToUpperInvariant()
 $sourceHash = Get-SourceTreeHash -Root $sourceFull
+Write-Output ('sourceTreeDebug={0}' -f $sourceHash)
 
 if ($Verify) {
     $manifest = Get-ManifestObject -Path $manifestFull
