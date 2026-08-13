@@ -91,22 +91,6 @@ $assemblyName = [Reflection.AssemblyName]::GetAssemblyName($assemblyFull)
 $fileInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyFull)
 $dllHash = (Get-FileHash -LiteralPath $assemblyFull -Algorithm SHA256).Hash.ToUpperInvariant()
 $sourceHash = Get-SourceTreeHash -Root $sourceFull
-# BEGIN CI HASH DEBUG
-$debugRoot = Join-Path ([IO.Path]::GetTempPath()) ('KnowledgeFrameworkHashDebug-' + [guid]::NewGuid().ToString('N'))
-try {
-    New-Item -ItemType Directory -Path $debugRoot | Out-Null
-    Get-ChildItem -LiteralPath $sourceFull -Force | Where-Object { $_.Name -ne '.git' } | Copy-Item -Destination $debugRoot -Recurse -Force
-    $debugScriptPath = Join-Path $debugRoot 'DevTools/New-KnowledgeFrameworkBuildManifest.ps1'
-    $debugScriptText = [IO.File]::ReadAllText($debugScriptPath)
-    $debugPattern = '(?s)\r?\n# BEGIN CI HASH DEBUG.*?# END CI HASH DEBUG\r?\n'
-    $debugScriptText = [Text.RegularExpressions.Regex]::Replace($debugScriptText, $debugPattern, [string]::Empty, 1)
-    [IO.File]::WriteAllText($debugScriptPath, $debugScriptText, (New-Object Text.UTF8Encoding($false)))
-    Write-Output ('sourceTreeFinalDebug={0}' -f (Get-SourceTreeHash -Root $debugRoot))
-}
-finally {
-    if (Test-Path -LiteralPath $debugRoot) { Remove-Item -LiteralPath $debugRoot -Recurse -Force }
-}
-# END CI HASH DEBUG
 
 if ($Verify) {
     $manifest = Get-ManifestObject -Path $manifestFull
