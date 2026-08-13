@@ -37,5 +37,5 @@ Describe behavior changes, compatibility impact, tests run, blocked runtime chec
 and any owner decision required. Keep generated intermediates out of changes. Use
 the [release checklist](RELEASE_CHECKLIST.md) for release-oriented work.
 
-The repository license is intentionally pending an owner decision. No `LICENSE`
-file should be created until that decision is recorded.
+The repository is licensed under the GNU General Public License, version 3 or
+any later version. See [LICENSE](LICENSE) for the complete license text.
