@@ -76,23 +76,23 @@ scenario, open the Development/Debug menu, and invoke `Run bounded V3 stress
 validation`. If the map or pawn requirement is unavailable, record BLOCKED/
 UNAVAILABLE and do not substitute a synthetic pass.
 
-## Automatic In-Game Behavioral Verification
+## RimTest In-Game Validation
 
-The mod-owned V2/V3 behavioral suite can run automatically in the disposable
-DevBridge2 quicktest map. The wrapper below builds the mod, writes a one-shot
-request marker, asks DevBridge2 to restart and wait for a playable map, then
-waits for the report written by Knowledge Framework itself:
+RimTest owns in-game test selection and orchestration. Run it from this
+repository root:
 
 ```powershell
-& .\DevTools\Run-KnowledgeFrameworkInGameTests.ps1
+& 'C:\Games\Steam\steamapps\common\RimWorld\Mods\RimTest\rimtest.cmd' suite run smoke --json
 ```
 
-DevBridge2 only coordinates the process, generation, readiness, and test lease;
-all assertions execute in `KnowledgeFrameworkVerification.RunGameTests` inside
-the mod assembly. The report is written to
-`Config/KnowledgeFramework_AutomaticTest.txt`. The bounded stress scenario is
-not folded into this suite because its required 20-live-pawn fixture must remain
-an explicit BLOCKED/UNAVAILABLE result when that fixture is absent.
+For normal development validation, use the affected-test workflow:
+
+```powershell
+& 'C:\Games\Steam\steamapps\common\RimWorld\Mods\RimTest\rimtest.cmd' affected --run --json
+```
+
+The configured `quicktest-smoke` recipe verifies the disposable in-game map
+through DevBridge2. It does not claim manual UI or bounded stress coverage.
 
 ## Bounded Stress Action
 

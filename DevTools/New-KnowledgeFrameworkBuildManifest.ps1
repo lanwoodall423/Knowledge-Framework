@@ -20,20 +20,49 @@ function Read-ReleaseVersion {
 function Get-SourceTreeHash {
     param([string]$Root)
     $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
-    $files = @(Get-ChildItem -LiteralPath $rootFull -File -Recurse | ForEach-Object {
-        $relative = $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+    function Select-SourceFile {
+        param(
+            [string]$Relative,
+            [string]$Full
+        )
+
+        $fileInfo = Get-Item -LiteralPath $Full -Force
         $segments = $relative.Split('/')
         $excluded = $false
         foreach ($segment in $segments) {
-            if ($segment -eq '.git' -or $segment -eq 'bin' -or $segment -eq 'obj' -or $segment -eq 'Build') { $excluded = $true; break }
+            if ($segment -eq '.git' -or $segment -eq '.rimctx' -or $segment -eq 'bin' -or $segment -eq 'obj' -or $segment -eq 'Build') { $excluded = $true; break }
         }
-        if ($relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
+        if ($relative.StartsWith('.rimdev/profiles/', [StringComparison]::OrdinalIgnoreCase) -or
+            $relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
             $relative.StartsWith('DevTools/BridgeAdapters/', [StringComparison]::OrdinalIgnoreCase) -or
-            $_.Extension -in @('.pdb', '.dll', '.cache') -or
-            $_.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
-            $_.Name.EndsWith('.FileListAbsolute.txt', [StringComparison]::OrdinalIgnoreCase)) { $excluded = $true }
-        if (-not $excluded) { [PSCustomObject]@{ Relative = $relative; Full = $_.FullName } }
-    })
+            $fileInfo.Extension -in @('.pdb', '.dll', '.cache') -or
+            $fileInfo.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
+            $fileInfo.Name.EndsWith('.FileListAbsolute.txt', [StringComparison]::OrdinalIgnoreCase)) { $excluded = $true }
+        if (-not $excluded) { [PSCustomObject]@{ Relative = $relative; Full = $fileInfo.FullName } }
+    }
+
+    # Prefer Git's tracked path set so ignored runtime/build state and provider-specific
+    # hidden-file behavior cannot change the release hash.
+    $gitPaths = @()
+    $gitExitCode = 1
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -ne $gitCommand) {
+        $gitPaths = @(& $gitCommand.Source -C $rootFull ls-files)
+        $gitExitCode = $LASTEXITCODE
+    }
+    if ($gitExitCode -eq 0 -and $gitPaths.Count -gt 0) {
+        $files = @($gitPaths | ForEach-Object {
+            $relative = ([string]$_).Replace('\', '/')
+            $full = Join-Path $rootFull ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+            if (Test-Path -LiteralPath $full -PathType Leaf) { Select-SourceFile -Relative $relative -Full $full }
+        })
+    }
+    else {
+        $files = @(Get-ChildItem -LiteralPath $rootFull -Force -File -Recurse | ForEach-Object {
+            $relative = $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+            Select-SourceFile -Relative $relative -Full $_.FullName
+        })
+    }
 
     # Sort-Object follows the current culture. Use an explicit ordinal insertion
     # sort so the manifest hash is identical on Windows and Linux.
@@ -49,11 +78,13 @@ function Get-SourceTreeHash {
 
     $stream = New-Object IO.MemoryStream
     $utf8 = New-Object Text.UTF8Encoding($false)
-    $textExtensions = @('.cs', '.csproj', '.props', '.targets', '.xml', '.json', '.md', '.ps1', '.txt', '.config', '.sln', '.yml', '.yaml', '.gitignore')
+    $textExtensions = @('.cs', '.csproj', '.props', '.targets', '.xml', '.json', '.md', '.ps1', '.txt', '.config', '.sln', '.yml', '.yaml', '.sh')
+    $textFileNames = @('.gitignore', '.gitattributes', 'LICENSE', 'VERSION')
     foreach ($file in $sortedFiles) {
         $pathBytes = $utf8.GetBytes($file.Relative)
         $contentBytes = [IO.File]::ReadAllBytes($file.Full)
-        if ($textExtensions -contains $([IO.Path]::GetExtension($file.Full).ToLowerInvariant())) {
+        if ($textExtensions -contains $([IO.Path]::GetExtension($file.Full).ToLowerInvariant()) -or
+            $textFileNames -contains $file.Relative.Split('/')[-1]) {
             # Canonicalize text line endings so Windows and Linux checkout bytes produce the same release hash.
             $text = [Text.Encoding]::UTF8.GetString($contentBytes).Replace("`r`n", "`n").Replace("`r", "`n")
             $contentBytes = $utf8.GetBytes($text)
@@ -100,7 +131,9 @@ if ($Verify) {
     if ($manifest.assemblyFile -ne $expectedAssemblyFile) { throw "Build manifest assembly file mismatch: $($manifest.assemblyFile) != $expectedAssemblyFile" }
     if ($manifest.assemblyIdentity -ne $assemblyName.FullName) { throw 'Build manifest assembly identity does not match the DLL.' }
     if ($manifest.dllSha256 -ne $dllHash) { throw 'Build manifest DLL SHA-256 does not match the DLL.' }
-    if ($manifest.sourceTreeSha256 -ne $sourceHash) { throw 'Build manifest source-tree SHA-256 does not match the current source tree.' }
+    if ($manifest.sourceTreeSha256 -ne $sourceHash) {
+        throw "Build manifest source-tree SHA-256 does not match the current source tree. manifest=$($manifest.sourceTreeSha256) computed=$sourceHash"
+    }
     if ($manifest.rimWorldTargetVersion -ne $RimWorldTargetVersion) { throw "Build manifest RimWorld target mismatch: $($manifest.rimWorldTargetVersion) != $RimWorldTargetVersion" }
     try { [DateTimeOffset]::Parse($manifest.buildUtc, [Globalization.CultureInfo]::InvariantCulture) | Out-Null }
     catch { throw "Build manifest buildUtc is invalid: $($manifest.buildUtc)" }
