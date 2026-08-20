@@ -25,9 +25,10 @@ function Get-SourceTreeHash {
         $segments = $relative.Split('/')
         $excluded = $false
         foreach ($segment in $segments) {
-            if ($segment -eq '.git' -or $segment -eq 'bin' -or $segment -eq 'obj' -or $segment -eq 'Build') { $excluded = $true; break }
+            if ($segment -eq '.git' -or $segment -eq '.rimctx' -or $segment -eq 'bin' -or $segment -eq 'obj' -or $segment -eq 'Build') { $excluded = $true; break }
         }
-        if ($relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
+        if ($relative.StartsWith('.rimdev/profiles/', [StringComparison]::OrdinalIgnoreCase) -or
+            $relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
             $relative.StartsWith('DevTools/BridgeAdapters/', [StringComparison]::OrdinalIgnoreCase) -or
             $_.Extension -in @('.pdb', '.dll', '.cache') -or
             $_.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
@@ -49,11 +50,13 @@ function Get-SourceTreeHash {
 
     $stream = New-Object IO.MemoryStream
     $utf8 = New-Object Text.UTF8Encoding($false)
-    $textExtensions = @('.cs', '.csproj', '.props', '.targets', '.xml', '.json', '.md', '.ps1', '.txt', '.config', '.sln', '.yml', '.yaml', '.gitignore')
+    $textExtensions = @('.cs', '.csproj', '.props', '.targets', '.xml', '.json', '.md', '.ps1', '.txt', '.config', '.sln', '.yml', '.yaml', '.sh')
+    $textFileNames = @('.gitignore', '.gitattributes', 'LICENSE', 'VERSION')
     foreach ($file in $sortedFiles) {
         $pathBytes = $utf8.GetBytes($file.Relative)
         $contentBytes = [IO.File]::ReadAllBytes($file.Full)
-        if ($textExtensions -contains $([IO.Path]::GetExtension($file.Full).ToLowerInvariant())) {
+        if ($textExtensions -contains $([IO.Path]::GetExtension($file.Full).ToLowerInvariant()) -or
+            $textFileNames -contains $file.Relative.Split('/')[-1]) {
             # Canonicalize text line endings so Windows and Linux checkout bytes produce the same release hash.
             $text = [Text.Encoding]::UTF8.GetString($contentBytes).Replace("`r`n", "`n").Replace("`r", "`n")
             $contentBytes = $utf8.GetBytes($text)
