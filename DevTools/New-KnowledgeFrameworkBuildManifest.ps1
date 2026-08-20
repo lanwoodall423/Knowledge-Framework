@@ -20,8 +20,13 @@ function Read-ReleaseVersion {
 function Get-SourceTreeHash {
     param([string]$Root)
     $rootFull = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/')
-    $files = @(Get-ChildItem -LiteralPath $rootFull -File -Recurse | ForEach-Object {
-        $relative = $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+    function Select-SourceFile {
+        param(
+            [string]$Relative,
+            [string]$Full
+        )
+
+        $fileInfo = Get-Item -LiteralPath $Full -Force
         $segments = $relative.Split('/')
         $excluded = $false
         foreach ($segment in $segments) {
@@ -30,11 +35,34 @@ function Get-SourceTreeHash {
         if ($relative.StartsWith('.rimdev/profiles/', [StringComparison]::OrdinalIgnoreCase) -or
             $relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
             $relative.StartsWith('DevTools/BridgeAdapters/', [StringComparison]::OrdinalIgnoreCase) -or
-            $_.Extension -in @('.pdb', '.dll', '.cache') -or
-            $_.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
-            $_.Name.EndsWith('.FileListAbsolute.txt', [StringComparison]::OrdinalIgnoreCase)) { $excluded = $true }
-        if (-not $excluded) { [PSCustomObject]@{ Relative = $relative; Full = $_.FullName } }
-    })
+            $fileInfo.Extension -in @('.pdb', '.dll', '.cache') -or
+            $fileInfo.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
+            $fileInfo.Name.EndsWith('.FileListAbsolute.txt', [StringComparison]::OrdinalIgnoreCase)) { $excluded = $true }
+        if (-not $excluded) { [PSCustomObject]@{ Relative = $relative; Full = $fileInfo.FullName } }
+    }
+
+    # Prefer Git's tracked path set so ignored runtime/build state and provider-specific
+    # hidden-file behavior cannot change the release hash.
+    $gitPaths = @()
+    $gitExitCode = 1
+    $gitCommand = Get-Command git -ErrorAction SilentlyContinue
+    if ($null -ne $gitCommand) {
+        $gitPaths = @(& $gitCommand.Source -C $rootFull ls-files)
+        $gitExitCode = $LASTEXITCODE
+    }
+    if ($gitExitCode -eq 0 -and $gitPaths.Count -gt 0) {
+        $files = @($gitPaths | ForEach-Object {
+            $relative = ([string]$_).Replace('\', '/')
+            $full = Join-Path $rootFull ($relative.Replace('/', [IO.Path]::DirectorySeparatorChar))
+            if (Test-Path -LiteralPath $full -PathType Leaf) { Select-SourceFile -Relative $relative -Full $full }
+        })
+    }
+    else {
+        $files = @(Get-ChildItem -LiteralPath $rootFull -Force -File -Recurse | ForEach-Object {
+            $relative = $_.FullName.Substring($rootFull.Length).TrimStart('\', '/').Replace('\', '/')
+            Select-SourceFile -Relative $relative -Full $_.FullName
+        })
+    }
 
     # Sort-Object follows the current culture. Use an explicit ordinal insertion
     # sort so the manifest hash is identical on Windows and Linux.
