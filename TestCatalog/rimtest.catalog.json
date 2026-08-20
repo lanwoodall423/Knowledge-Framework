@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "rimtest-catalog/v1",
+  "tests": [
+    {
+      "id": "knowledge-framework-in-game-smoke",
+      "description": "Run the RimTest-managed in-game smoke check for the Knowledge Framework profile.",
+      "recipe": "knowledge-framework-development-smoke",
+      "artifactFreshnessAnchor": true,
+      "tags": ["knowledge-framework", "in-game", "smoke"],
+      "covers": [
+        {"kind": "csharp_type", "name": "KnowledgeFramework.KnowledgeFrameworkMod"},
+        {"kind": "csharp_type", "name": "KnowledgeFramework.GameComponent_KnowledgeFramework"}
+      ],
+      "cost": "low"
+    }
+  ],
+  "suites": [
+    {
+      "id": "smoke",
+      "description": "RimTest-managed Knowledge Framework in-game smoke validation.",
+      "tests": ["knowledge-framework-in-game-smoke"]
+    }
+  ]
+}
