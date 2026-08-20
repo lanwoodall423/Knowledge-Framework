@@ -103,7 +103,9 @@ if ($Verify) {
     if ($manifest.assemblyFile -ne $expectedAssemblyFile) { throw "Build manifest assembly file mismatch: $($manifest.assemblyFile) != $expectedAssemblyFile" }
     if ($manifest.assemblyIdentity -ne $assemblyName.FullName) { throw 'Build manifest assembly identity does not match the DLL.' }
     if ($manifest.dllSha256 -ne $dllHash) { throw 'Build manifest DLL SHA-256 does not match the DLL.' }
-    if ($manifest.sourceTreeSha256 -ne $sourceHash) { throw 'Build manifest source-tree SHA-256 does not match the current source tree.' }
+    if ($manifest.sourceTreeSha256 -ne $sourceHash) {
+        throw "Build manifest source-tree SHA-256 does not match the current source tree. manifest=$($manifest.sourceTreeSha256) computed=$sourceHash"
+    }
     if ($manifest.rimWorldTargetVersion -ne $RimWorldTargetVersion) { throw "Build manifest RimWorld target mismatch: $($manifest.rimWorldTargetVersion) != $RimWorldTargetVersion" }
     try { [DateTimeOffset]::Parse($manifest.buildUtc, [Globalization.CultureInfo]::InvariantCulture) | Out-Null }
     catch { throw "Build manifest buildUtc is invalid: $($manifest.buildUtc)" }
