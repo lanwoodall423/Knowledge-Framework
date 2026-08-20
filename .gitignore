@@ -19,6 +19,8 @@ DevTools/BridgeAdapters/*
 !DevTools/BridgeAdapters/KnowledgeFramework.*.manifest.json
 
 # Local tooling and editor state.
+.rimctx/
+.rimdev/profiles/
 .vs/
 .idea/
 *.user
