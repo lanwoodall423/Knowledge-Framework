@@ -6,5 +6,5 @@
   "diagnosticOwnership": "KnowledgeFramework",
   "adapterRegistration": false,
   "historicalAdapterSource": "DevTools/BridgeAdapter/KnowledgeFrameworkBridgeAdapter.cs",
-  "runtimeGuide": "DevTools/DEVBRIDGE2_AGENT.md"
+  "runtimeGuide": "DevTools/DEVBRIDGE_AGENT.md"
 }

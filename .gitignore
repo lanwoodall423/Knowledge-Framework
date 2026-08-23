@@ -20,6 +20,7 @@ DevTools/BridgeAdapters/*
 
 # Local tooling and editor state.
 .rimctx/
+.rimdev/observability/
 .rimdev/profiles/
 .vs/
 .idea/

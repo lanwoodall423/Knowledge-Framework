@@ -1,3 +1,16 @@
-# Knowledge Framework DevBridge2 Workflow
+# Knowledge Framework Runtime Validation
 
-Run the pure behavioral suite and owner validator after building. DevBridge2 coordinates only lifecycle, readiness, and test leases through `C:\Games\Steam\steamapps\common\RimWorld\Mods\DevBridge2\DevBridge.cmd` (`status`, `test begin`, `test end <exact-owned-lease>`, `restart`, and `wait-ready`). It has no adapter-registration, query, or hot-reload API; do not use the deprecated RimWorld Dev Bridge or launch/kill RimWorld directly. Gameplay, definitions, Harmony, serialized types, and core changes require `restart` followed by `wait-ready`; discard old launch/generation context after the transition. Knowledge Framework diagnostics and assertions remain framework-owned and the framework remains optional.
+RimTest is the development entry point for readiness, affected-test selection,
+build, deployment, artifact freshness, and in-game validation. Run `rimtest
+doctor --json` before relying on validation and use `rimtest affected --run
+--json` for current-source validation. RimTest delegates lifecycle, readiness,
+generation identity, and test leases to DevBridge2; do not invoke lower-layer
+lifecycle commands or launch/kill RimWorld as a substitute for that workflow.
+
+The configured `knowledge-framework-development-smoke` recipe proves that the
+current developer assembly is built, deployed, loaded, and reaches the
+Quicktest map during an affected source run. It does not invoke
+`KnowledgeFrameworkVerification.RunGameTests`; therefore it must not be
+reported as passing the deleted automatic V2/V3 behavioral suite. The pure
+behavioral harness and manual bounded stress action remain framework-owned, and
+the framework remains usable without development tooling.

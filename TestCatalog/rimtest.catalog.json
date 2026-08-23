@@ -3,7 +3,7 @@
   "tests": [
     {
       "id": "knowledge-framework-in-game-smoke",
-      "description": "Run the RimTest-managed in-game smoke check for the Knowledge Framework profile.",
+      "description": "Build, deploy, and load Knowledge Framework, then require the DevBridge2 Quicktest map to be ready.",
       "recipe": "knowledge-framework-development-smoke",
       "artifactFreshnessAnchor": true,
       "tags": ["knowledge-framework", "in-game", "smoke"],
@@ -17,7 +17,7 @@
   "suites": [
     {
       "id": "smoke",
-      "description": "RimTest-managed Knowledge Framework in-game smoke validation.",
+      "description": "RimTest-managed Knowledge Framework build/load and Quicktest-readiness validation.",
       "tests": ["knowledge-framework-in-game-smoke"]
     }
   ]
