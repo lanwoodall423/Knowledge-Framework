@@ -78,21 +78,30 @@ UNAVAILABLE and do not substitute a synthetic pass.
 
 ## RimTest In-Game Validation
 
-RimTest owns in-game test selection and orchestration. Run it from this
-repository root:
+RimTest owns readiness, affected-test selection, build, deployment, artifact
+freshness, and in-game orchestration. Run it from this repository root:
 
 ```powershell
-& 'C:\Games\Steam\steamapps\common\RimWorld\Mods\RimTest\rimtest.cmd' suite run smoke --json
+rimtest doctor --json
 ```
 
 For normal development validation, use the affected-test workflow:
 
 ```powershell
-& 'C:\Games\Steam\steamapps\common\RimWorld\Mods\RimTest\rimtest.cmd' affected --run --json
+rimtest affected --run --json
 ```
 
-The configured `quicktest-smoke` recipe verifies the disposable in-game map
-through DevBridge2. It does not claim manual UI or bounded stress coverage.
+If `rimtest` is not on `PATH`, resolve the repository-local executable at
+`..\RimTest\rimtest.cmd`; do not replace the owning workflow with direct
+DevBridge2 lifecycle commands.
+
+During an affected source run, the configured
+`knowledge-framework-development-smoke` recipe proves that the current
+developer assembly is built, deployed, loaded, and reaches the disposable
+Quicktest map through DevBridge2. The recipe does not invoke
+`KnowledgeFrameworkVerification.RunGameTests`, so it does not replace or claim
+the V2/V3 assertions formerly executed by the deleted automatic runner. It also
+does not claim manual UI or bounded stress coverage.
 
 ## Bounded Stress Action
 
