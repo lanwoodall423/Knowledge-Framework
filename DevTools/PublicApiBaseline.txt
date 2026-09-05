@@ -1,6 +1,6 @@
 # Knowledge Framework public API baseline
 # format=1
-# release=3.1.0-beta.1
+# release=3.1.0-beta.2
 # Additive or incompatible changes require an intentional baseline update.
 
 CTOR|KnowledgeFramework.GameComponent_KnowledgeFramework|visibility=public|modifiers=|params=

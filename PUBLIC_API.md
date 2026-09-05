@@ -57,7 +57,7 @@ for new integrations:
 - types with `V2` suffixes and the legacy migration/registration helpers
 - members marked `[Obsolete]`
 
-No obsolete member is removed in the `3.1.0-beta.1` release.
+No obsolete member is removed in the `3.1.0-beta.2` release candidate.
 
 ## Development/Diagnostic
 
@@ -70,6 +70,15 @@ integration and are not general gameplay contracts:
   verification result/diagnostic records
 
 Consumers should not build gameplay correctness on these surfaces.
+
+## Accidental/Unnecessary Surface Audit
+
+The beta.2 release-surface audit found no public symbol whose removal or
+visibility reduction is both safe and beneficial before 3.1.0. Existing
+implementation-facing exports are retained because they are either legacy
+compatibility surface or already isolated as development/diagnostic API. No
+baseline declaration change is justified; the audit changes classification
+guidance only.
 
 ## Internal
 

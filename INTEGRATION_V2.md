@@ -263,6 +263,7 @@ is intentionally cheap and returns meaningful counters only in development mode.
 Capability-aware consumers can inspect `KnowledgeFrameworkApi.ApiVersion` and
 `KnowledgeFrameworkApi.CapabilityVersion(...)` before using optional V3 features.
 
-The framework release version is `3.1.0-beta.1`. Read it from
-`KnowledgeFrameworkApi.ReleaseVersion`; do not compare it to `ApiVersion`.
-`ApiVersion` remains the integer capability-generation contract and is still `3`.
+The intended framework release candidate is `3.1.0-beta.2`; this metadata does
+not claim publication. Read it from `KnowledgeFrameworkApi.ReleaseVersion`; do
+not compare it to `ApiVersion`. `ApiVersion` remains the integer
+capability-generation contract and is still `3`.

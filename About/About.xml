@@ -3,7 +3,7 @@
   <name>Knowledge Framework</name>
   <author>Lan</author>
   <packageId>lan.knowledgeframework</packageId>
-  <modVersion>3.1.0-beta.1</modVersion>
+  <modVersion>3.1.0-beta.2</modVersion>
   <url>https://github.com/lanwoodall423/Knowledge-Framework</url>
   <supportedVersions><li>1.6</li></supportedVersions>
   <modDependencies>

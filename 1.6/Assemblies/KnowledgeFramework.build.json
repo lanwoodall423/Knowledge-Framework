@@ -1,13 +1,13 @@
 {
   "manifestVersion": 1,
-  "semanticVersion": "3.1.0-beta.1",
+  "semanticVersion": "3.1.0-beta.2",
   "assemblyFile": "KnowledgeFramework.dll",
   "assemblyIdentity": "KnowledgeFramework, Version=3.1.0.0, Culture=neutral, PublicKeyToken=null",
   "assemblyVersion": "3.1.0.0",
   "fileVersion": "3.1.0.0",
-  "informationalVersion": "3.1.0-beta.1",
-  "dllSha256": "B5BBC1812C0AA07A12A82278001D762CCBC253C6544F5FD95477F07AF1234400",
-  "sourceTreeSha256": "B290F240D578174A98E949A5418DC507196008D7027955089BA0F5246FBA342A",
-  "buildUtc": "2026-08-23T15:39:10.5510194+00:00",
+  "informationalVersion": "3.1.0-beta.2",
+  "dllSha256": "916855D2E3A11EDC251B2D76E5BA5CF98CC4A041512FAEBCC02428D11E082E0B",
+  "sourceTreeSha256": "9CB2562136657B82BE882159FA8C9013A7BE255035F2B8936466BC62B838C766",
+  "buildUtc": "2026-09-05T15:15:37.3933696+00:00",
   "rimWorldTargetVersion": "1.6"
 }

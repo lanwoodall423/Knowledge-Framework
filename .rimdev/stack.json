@@ -4,5 +4,19 @@
   "devBridgeProject": "knowledge-framework",
   "catalog": "TestCatalog/rimtest.catalog.json",
   "fallbackSuite": "smoke",
-  "rimBridge": "via-devbridge"
+  "rimBridge": "via-devbridge",
+  "workload": "production",
+  "projectType": "rimworld-content-mod",
+  "packageId": "lan.knowledgeframework",
+  "sourceProject": "Source/KnowledgeFramework.csproj",
+  "configuration": "Release",
+  "expectedAssembly": "KnowledgeFramework.dll",
+  "deploymentTarget": "1.6/Assemblies/KnowledgeFramework.dll",
+  "testRecipe": "knowledge-framework-development-smoke",
+  "runtimePackage": {
+    "sourceRoot": ".",
+    "include": ["About/**", "LoadFolders.xml", "1.*/**"],
+    "exclude": [".rimdev/**", ".rimctx/**", "Source/**", "bin/**", "obj/**", "artifacts/**", "diagnostics/**", "evidence/**"]
+  },
+  "dependencies": []
 }

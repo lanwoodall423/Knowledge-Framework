@@ -47,14 +47,15 @@ See [INTEGRATION.md](INTEGRATION.md) for generation-neutral examples and
 
 ## Versions and Compatibility
 
-The current semantic release is `3.1.0-beta.1`. The public integer API contract
-remains `KnowledgeFrameworkApi.ApiVersion == 3`; capability generations are
-reported separately from the release version. See
-[API_COMPATIBILITY.md](API_COMPATIBILITY.md) and [PUBLIC_API.md](PUBLIC_API.md).
+The intended semantic release candidate is `3.1.0-beta.2`; this metadata does
+not claim publication. The public integer API contract remains
+`KnowledgeFrameworkApi.ApiVersion == 3`; capability generations are reported
+separately from the release version. See [API_COMPATIBILITY.md](API_COMPATIBILITY.md)
+and [PUBLIC_API.md](PUBLIC_API.md).
 
 The supported game version is RimWorld `1.6`. Existing V1/V2 consumers and saved
 data remain supported; V3 is additive. Obsolete public members are retained for
-this release.
+this release candidate.
 
 Runtime consumers should use `KnowledgeConsumerApi` for readiness, idempotent
 registration preparation, ownership/conflict inspection, safe non-replacing domain

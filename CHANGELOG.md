@@ -1,5 +1,13 @@
 # Changelog
 
+## 3.1.0-beta.2
+
+- Added public-adoption documentation and a manually invoked bounded V3 stress
+  validation action.
+- Added runtime testing scenarios and release hygiene guidance.
+- Completed a release-surface audit; no public API removals or visibility
+  reductions are justified for this release candidate.
+
 ## 3.1.0-beta.1
 
 - Added the stable `KnowledgeConsumerApi` readiness, idempotent preparation, safe
@@ -25,6 +33,4 @@
 
 ## Unreleased
 
-- Added public-adoption documentation and a manually invoked bounded V3 stress
-  validation action.
-- Added runtime testing scenarios and release hygiene guidance.
+No unreleased changes.

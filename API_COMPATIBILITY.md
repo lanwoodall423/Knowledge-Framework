@@ -2,11 +2,11 @@
 
 ## Release Identity
 
-The current release is `3.1.0-beta.1`. `VERSION` is the authoritative semantic
-release value. The primary `KnowledgeFramework` assembly uses it for
-informational/file metadata, the bridge adapter and bridge manifest use it for
-reported release identity, and the About/package metadata records the same
-value.
+The intended release candidate is `3.1.0-beta.2`; this metadata does not claim
+publication. `VERSION` is the authoritative semantic release value. The primary
+`KnowledgeFramework` assembly uses it for informational/file metadata, the
+bridge adapter and bridge manifest use it for reported release identity, and the
+About/package metadata records the same value.
 
 `KnowledgeFrameworkApi.ApiVersion` is not a release number. It remains the
 integer capability-generation contract and is currently `3`. Capability
@@ -16,6 +16,27 @@ beta, and final releases.
 This is a semver minor increment because it adds public consumer contracts without
 removing or changing existing contracts. `ApiVersion` remains `3`; the new
 consumer capabilities are generation-3 additions, not a semantic release number.
+
+## Beta.2 Release-Surface Audit
+
+The beta.2 audit classified the exported primary-assembly surface as follows:
+
+- **Stable consumer API:** `KnowledgeFrameworkApi`, `KnowledgeConsumerApi`, the
+  documented registration/readiness boundary, service/transaction/query APIs,
+  immutable snapshots/results, and explicit provider/resolver interfaces.
+- **Advanced supported API:** V3 services, contextual/query/extension APIs,
+  definitions, snapshots, and framework component/UI provider integration.
+- **Legacy compatibility API:** V1/V2 services and data contracts, `V2` types,
+  migration/registration helpers, and `[Obsolete]` members.
+- **Development/diagnostic API:** diagnostics, validation, verification,
+  debug actions, startup hooks, UI patch helpers, and debug/window records.
+- **Accidental/unnecessary public implementation surface:** none identified for
+  safe removal before 3.1.0. Existing implementation-facing exports remain
+  classified as development/diagnostic or legacy compatibility surface; reducing
+  them now would create compatibility risk without a release-blocking benefit.
+
+No public API shape change is justified for beta.2. The baseline is intentionally
+updated only for the release identity, not regenerated for declarations.
 
 ## Compatibility Guarantees
 
