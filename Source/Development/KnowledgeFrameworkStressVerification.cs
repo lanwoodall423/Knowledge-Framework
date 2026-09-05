@@ -78,7 +78,7 @@ namespace KnowledgeFramework.Development
 
         [DebugAction("Knowledge Framework", "Run bounded V3 stress validation", actionType = DebugActionType.Action,
             allowedGameStates = AllowedGameStates.PlayingOnMap)]
-        private static void RunFromDebugMenu()
+        public static void RunFromDebugMenu()
         {
             StressResult result = Run();
             string reportPath = WriteReport(result);
@@ -94,6 +94,10 @@ namespace KnowledgeFramework.Development
             Messages.Message(result.Status == "PASS" ? "KnowledgeFramework_VerificationPassed".Translate() :
                 "KnowledgeFramework_VerificationFailed".Translate(),
                 result.Status == "PASS" ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+            if (result.Status != "PASS")
+                throw new InvalidOperationException("Knowledge Framework V3 stress validation " + result.Status +
+                    (result.failures.Count > 0 ? ": " + string.Join("; ", result.failures) :
+                    result.unavailableReasons.Count > 0 ? ": " + string.Join("; ", result.unavailableReasons) : string.Empty));
         }
 
         internal static string ReportPath => Path.Combine(GenFilePaths.ConfigFolderPath, "KnowledgeFramework_Stress.txt");
@@ -182,12 +186,15 @@ namespace KnowledgeFramework.Development
                         domainId = DomainId,
                         subjectId = SubjectPrefix + "00000",
                         observationId = RecipeId,
+                        expertiseTrackId = ExpertiseTrackId,
+                        directExpertise = 1f,
                         logicalEventId = "stress-event-" + index.ToString("D4"),
                         sourceInstanceId = "stress-source-" + index.ToString("D4"),
                         context = contexts[index < ContextCount ? index : 0],
                         witnesses = witnesses,
                         summary = "bounded stress observation",
                         specimenId = "specimen-" + (index % 16).ToString("D2"),
+                        source = Owner,
                         notify = false
                     });
                     result.transactions++;
@@ -202,7 +209,8 @@ namespace KnowledgeFramework.Development
                     "transactions=" + result.transactions + " witnesses=" + witnesses.Count);
                 result.Check("multiple contextual records", component.V3ContextCount >= ContextCount,
                     "contexts=" + component.V3ContextCount);
-                result.Check("expertise fan-out", KnowledgeService.GetPawnExpertiseExperience(DomainId, primary) > 0f);
+                result.Check("expertise track registration",
+                    KnowledgeRegistry.Schema(DomainId)?.ExpertiseTrack(ExpertiseTrackId) != null);
 
                 KnowledgeMeasurement longTickMeasurement = new KnowledgeMeasurement
                 {

@@ -35,14 +35,16 @@ namespace KnowledgeFramework.Development
 
                 KnowledgeDomainRegistration alpha = Registration(AlphaDomain, AlphaSource, AlphaSubject, "Alpha consumer");
                 KnowledgeDomainRegistration beta = Registration(BetaDomain, BetaSource, BetaSubject, "Beta consumer");
-                bool alphaOwnership = KnowledgeConsumerApi.InspectDomainRegistration(alpha,
-                    new KnowledgeRegistrationOptions { source = AlphaSource }).state == KnowledgeDomainRegistrationState.RegisteredBySameOwner;
-                bool betaOwnership = KnowledgeConsumerApi.InspectDomainRegistration(beta,
-                    new KnowledgeRegistrationOptions { source = BetaSource }).state == KnowledgeDomainRegistrationState.RegisteredBySameOwner;
-                bool foreignRejected = !KnowledgeConsumerApi.RegisterDomain(alpha,
-                    new KnowledgeRegistrationOptions { source = BetaSource }).Success;
-                Require(alphaOwnership && betaOwnership && foreignRejected,
-                    "consumer ownership and foreign registration isolation");
+                string alphaRegisteredOwner = KnowledgeRegistry.Schema(alpha.id)?.source;
+                string betaRegisteredOwner = KnowledgeRegistry.Schema(beta.id)?.source;
+                bool alphaOwnership = string.Equals(alphaRegisteredOwner, AlphaSource, StringComparison.Ordinal);
+                bool betaOwnership = string.Equals(betaRegisteredOwner, BetaSource, StringComparison.Ordinal);
+                KnowledgeConsumerRegistrationResult foreignAttempt = KnowledgeConsumerApi.RegisterDomain(alpha,
+                    new KnowledgeRegistrationOptions { source = BetaSource });
+                Require(alphaOwnership, "alpha consumer ownership (" + (alphaRegisteredOwner ?? "<none>") + ")");
+                Require(betaOwnership, "beta consumer ownership (" + (betaRegisteredOwner ?? "<none>") + ")");
+                Require(!foreignAttempt.Success,
+                    "foreign registration isolation (" + foreignAttempt.code + ")");
 
                 KnowledgeTransactionResult alphaObservation = Observe(AlphaDomain, AlphaSubject, pawn, AlphaSource);
                 KnowledgeTransactionResult betaObservation = Observe(BetaDomain, BetaSubject, pawn, BetaSource);

@@ -14,9 +14,9 @@
   },
   "operations": [
     {
-      "tool": "rimworld/execute_debug_action",
+      "tool": "rimworld/get_debug_action",
       "arguments": {
-        "path": "Knowledge Framework/Run complete V2/V3 behavioral verification"
+        "path": "Actions\\Run complete V2/V3 behavioral verification"
       },
       "expect": {
         "success": true
@@ -25,7 +25,16 @@
     {
       "tool": "rimworld/execute_debug_action",
       "arguments": {
-        "path": "Knowledge Framework/Run two-consumer isolation validation"
+        "path": "Actions\\Run complete V2/V3 behavioral verification"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Actions\\Run two-consumer isolation validation"
       },
       "expect": {
         "success": true
@@ -55,7 +64,7 @@
     {
       "tool": "rimworld/execute_debug_action",
       "arguments": {
-        "path": "Knowledge Framework/Run complete V2/V3 behavioral verification"
+        "path": "Actions\\Run complete V2/V3 behavioral verification"
       },
       "expect": {
         "success": true
@@ -64,7 +73,7 @@
     {
       "tool": "rimworld/execute_debug_action",
       "arguments": {
-        "path": "Knowledge Framework/Run two-consumer isolation validation"
+        "path": "Actions\\Run two-consumer isolation validation"
       },
       "expect": {
         "success": true
@@ -73,7 +82,7 @@
     {
       "tool": "rimworld/execute_debug_action",
       "arguments": {
-        "path": "Knowledge Framework/Run bounded V3 stress validation"
+        "path": "Actions\\Run bounded V3 stress validation"
       },
       "expect": {
         "success": true
