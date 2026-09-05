@@ -12,7 +12,8 @@
   "configuration": "Release",
   "expectedAssembly": "KnowledgeFramework.dll",
   "deploymentTarget": "1.6/Assemblies/KnowledgeFramework.dll",
-  "testRecipe": "knowledge-framework-development-smoke",
+  "testRecipe": "knowledge-framework-release-runtime",
+  "testRecipePath": ".rimdev/recipes/knowledge-framework-release-runtime.json",
   "runtimePackage": {
     "sourceRoot": ".",
     "include": ["About/**", "LoadFolders.xml", "1.*/**"],

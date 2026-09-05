@@ -12,6 +12,20 @@
         {"kind": "csharp_type", "name": "KnowledgeFramework.GameComponent_KnowledgeFramework"}
       ],
       "cost": "low"
+    },
+    {
+      "id": "knowledge-framework-release-runtime",
+      "description": "Build, deploy, exercise the complete V2/V3 behavioral suite across a real save/reload, then run bounded V3 stress validation.",
+      "recipe": "knowledge-framework-release-runtime",
+      "artifactFreshnessAnchor": true,
+      "tags": ["knowledge-framework", "in-game", "release", "rimbridge", "persistence", "stress"],
+      "covers": [
+        {"kind": "csharp_type", "name": "KnowledgeFramework.KnowledgeFrameworkVerification"},
+        {"kind": "csharp_type", "name": "KnowledgeFramework.KnowledgeFrameworkVerificationV3"},
+        {"kind": "csharp_type", "name": "KnowledgeFramework.GameComponent_KnowledgeFramework"},
+        {"kind": "csharp_type", "name": "KnowledgeFramework.Development.KnowledgeFrameworkStressVerification"}
+      ],
+      "cost": "high"
     }
   ],
   "suites": [
@@ -19,6 +33,11 @@
       "id": "smoke",
       "description": "RimTest-managed Knowledge Framework build/load and Quicktest-readiness validation.",
       "tests": ["knowledge-framework-in-game-smoke"]
+    },
+    {
+      "id": "release",
+      "description": "RimTest-managed Knowledge Framework release runtime qualification with save/reload and bounded stress coverage.",
+      "tests": ["knowledge-framework-release-runtime"]
     }
   ]
 }

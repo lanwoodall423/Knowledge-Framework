@@ -103,6 +103,33 @@ Quicktest map through DevBridge2. The recipe does not invoke
 the V2/V3 assertions formerly executed by the deleted automatic runner. It also
 does not claim manual UI or bounded stress coverage.
 
+## Canonical Release Runtime Suite
+
+The `release` suite is intentionally separate from the inexpensive `smoke` suite. Run it only
+against a disposable RimWorld environment:
+
+```powershell
+& ..\RimTest\rimliaison.cmd suite run release --json
+```
+
+RimTest owns build, deployment, artifact freshness, readiness, and the DevBridge2 lease. The
+project-owned recipe in `.rimdev/recipes/knowledge-framework-release-runtime.json` then:
+
+1. Runs the existing complete V2/V3 behavioral verification.
+2. Runs the development-only two-consumer isolation fixture, which checks independent
+   ownership, records, and removal cleanup.
+3. Saves and reloads the same game through RimBridgeServer, waiting for visual readiness.
+4. Runs the behavioral verification and consumer-isolation fixture again after reload.
+5. Runs the existing bounded V3 stress action.
+
+The behavioral action writes `Config/KnowledgeFramework_Verification.txt`; the stress action writes
+`Config/KnowledgeFramework_Stress.txt`. A successful debug-action invocation is not a behavioral
+PASS by itself: inspect both reports. Any report failure is a release failure. Stress reports with
+an unavailable map or fewer than 20 live pawns are `BLOCKED/UNAVAILABLE`, not a synthetic pass.
+
+The release catalog entry anchors freshness to the current Release assembly. The development smoke
+entry remains the cheap build/load/Quicktest check and does not run this suite.
+
 ## Bounded Stress Action
 
 The development-only action is implemented in

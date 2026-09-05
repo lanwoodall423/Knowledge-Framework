@@ -1,0 +1,91 @@
+{
+  "schemaVersion": "devbridge-test-recipe/v2",
+  "id": "knowledge-framework-release-runtime",
+  "description": "Build and load Knowledge Framework, run V2/V3 behavior and two-consumer isolation before and after a real save/reload, then run bounded V3 stress validation.",
+  "projects": ["knowledge-framework"],
+  "inputs": {
+    "quicktest": true
+  },
+  "requiresReady": true,
+  "allowInGameMutation": true,
+  "success": {
+    "quicktestReady": true,
+    "rimBridgeReady": true
+  },
+  "operations": [
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Knowledge Framework/Run complete V2/V3 behavioral verification"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Knowledge Framework/Run two-consumer isolation validation"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/save_game",
+      "arguments": {
+        "saveName": "KnowledgeFramework-release-runtime-beta2"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/load_game_ready",
+      "arguments": {
+        "saveName": "KnowledgeFramework-release-runtime-beta2",
+        "readiness": "visual",
+        "pauseIfNeeded": true,
+        "timeoutMs": 120000
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Knowledge Framework/Run complete V2/V3 behavioral verification"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Knowledge Framework/Run two-consumer isolation validation"
+      },
+      "expect": {
+        "success": true
+      }
+    },
+    {
+      "tool": "rimworld/execute_debug_action",
+      "arguments": {
+        "path": "Knowledge Framework/Run bounded V3 stress validation"
+      },
+      "expect": {
+        "success": true
+      }
+    }
+  ],
+  "budget": {
+    "timeoutSeconds": 900,
+    "maxRimWorldLaunches": 1,
+    "maxRecipeAttempts": 1,
+    "maxCoordinatorRefreshes": 4,
+    "stopOnRepeatedFailureFingerprint": true,
+    "maxRepeatedFailureCount": 1
+  }
+}

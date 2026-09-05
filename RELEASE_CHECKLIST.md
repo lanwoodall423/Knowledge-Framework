@@ -12,8 +12,13 @@
   the documented integration package.
 - Run the behavioral harness against both the shipped and source-built DLL where
   local dependencies permit it.
-- Run the development stress action in a disposable test save and archive its
-  report separately from player saves.
+- Run the canonical RELEASE runtime suite in a disposable RimWorld environment:
+  `& ..\RimTest\rimliaison.cmd suite run release --json`. It runs the existing
+  V2/V3 behavioral and two-consumer isolation checks before and after a real
+  save/reload, then invokes bounded V3 stress validation.
+- Archive `Config/KnowledgeFramework_Verification.txt` and
+  `Config/KnowledgeFramework_Stress.txt` with the runtime evidence. A stress
+  prerequisite gap is BLOCKED/UNAVAILABLE, never a synthetic pass.
 - Check XML, translations, internal documentation links, and unintended packaged
   artifacts.
 - Report PASS, FAIL, and BLOCKED/UNAVAILABLE checks separately.
