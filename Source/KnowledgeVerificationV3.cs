@@ -1124,7 +1124,7 @@ namespace KnowledgeFramework
                 }) && !KnowledgeMigrationService.IsCommitted("verification-migration-claim", 1), ref passed, failures);
                 string lateConsumer = "verification-migration-late";
                 float lateBefore = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
-                bool lateImport = KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                KnowledgeConsumerMigration lateMigration = new KnowledgeConsumerMigration
                 {
                     consumerId = lateConsumer,
                     version = 1,
@@ -1143,20 +1143,37 @@ namespace KnowledgeFramework
                             conditionMet = false
                         }
                     }
-                });
-                float lateAfterFailure = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
-                Check("migration late failure remains uncommitted [imported=" + lateImport + ",committed=" + KnowledgeMigrationService.IsCommitted(lateConsumer, 1) + ",before=" + lateBefore + ",after=" + lateAfterFailure + "]", !lateImport && !KnowledgeMigrationService.IsCommitted(lateConsumer, 1) &&
-                    lateAfterFailure >= lateBefore + 11f, ref passed, failures);
-                bool lateRetry = KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                };
+                if (!KnowledgeMigrationService.IsCommitted(lateConsumer, 1))
                 {
-                    consumerId = lateConsumer,
-                    version = 1,
-                    domainId = DomainId,
-                    subjectId = "source",
-                    pawn = pawn,
-                    personalKnowledge = lateBefore + 11f
-                });
-                Check("migration retry after partial monotonic state", lateRetry && KnowledgeMigrationService.IsCommitted(lateConsumer, 1), ref passed, failures);
+                    bool lateImport = KnowledgeMigrationService.Import(lateMigration);
+                    float lateAfterFailure = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                    Check("migration late failure remains uncommitted [imported=" + lateImport + ",committed=" + KnowledgeMigrationService.IsCommitted(lateConsumer, 1) + ",before=" + lateBefore + ",after=" + lateAfterFailure + "]",
+                        !lateImport && !KnowledgeMigrationService.IsCommitted(lateConsumer, 1) &&
+                        lateAfterFailure >= lateBefore + 11f, ref passed, failures);
+                    bool lateRetry = KnowledgeMigrationService.Import(new KnowledgeConsumerMigration
+                    {
+                        consumerId = lateConsumer,
+                        version = 1,
+                        domainId = DomainId,
+                        subjectId = "source",
+                        pawn = pawn,
+                        personalKnowledge = lateBefore + 11f
+                    });
+                    Check("migration retry after partial monotonic state", lateRetry && KnowledgeMigrationService.IsCommitted(lateConsumer, 1), ref passed, failures);
+                    Check("migration late commit occurs exactly once", component.ConsumerMigrationCountV3(lateConsumer) == 1, ref passed, failures);
+                }
+                else
+                {
+                    int lateCountBefore = component.ConsumerMigrationCountV3(lateConsumer);
+                    bool lateRepeat = KnowledgeMigrationService.Import(lateMigration);
+                    float lateAfterRepeat = KnowledgeService.GetPawnKnowledgeExperience(DomainId, "source", pawn);
+                    int lateCountAfter = component.ConsumerMigrationCountV3(lateConsumer);
+                    Check("migration late-retry commit persists and remains idempotent after reload [before=" + lateBefore + ",after=" + lateAfterRepeat + ",count=" + lateCountBefore + "->" + lateCountAfter + "]",
+                        lateRepeat && KnowledgeMigrationService.IsCommitted(lateConsumer, 1) &&
+                        Math.Abs(lateAfterRepeat - lateBefore) < 0.001f && lateCountBefore == 1 && lateCountAfter == 1,
+                        ref passed, failures);
+                }
                 string successfulConsumer = "verification-migration-success";
                 KnowledgeConsumerMigration successfulMigration = new KnowledgeConsumerMigration
                 {
