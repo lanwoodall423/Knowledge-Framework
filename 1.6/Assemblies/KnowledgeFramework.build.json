@@ -1,13 +1,50 @@
 {
     "manifestVersion":  1,
+    "buildContractVersion":  1,
     "semanticVersion":  "3.1.0-beta.2",
     "assemblyFile":  "KnowledgeFramework.dll",
     "assemblyIdentity":  "KnowledgeFramework, Version=3.1.0.0, Culture=neutral, PublicKeyToken=null",
     "assemblyVersion":  "3.1.0.0",
     "fileVersion":  "3.1.0.0",
     "informationalVersion":  "3.1.0-beta.2",
-    "dllSha256":  "96805AFD5F82A9A527B7879F69780F50D0C13A24E52F28EFAF2247A359A2362D",
-    "sourceTreeSha256":  "2FDCC8234BBE2BF86E27FB72627D778FE4BD7C2FB1CAA6E0CB3B6F64000FD0C3",
-    "buildUtc":  "2026-09-07T00:43:22.5537780+00:00",
+    "dllSha256":  "5812DF77A102283FB0246C3902FA5BB6950370555BC996992B3B7777F326E996",
+    "sourceTreeSha256":  "0119C6D6A7C2AF7BED3E4CA49306E0ECBA66D91465343174B36E6C5E876956C1",
+    "configuration":  "Release",
+    "targetFramework":  "net472",
+    "sdkVersion":  "10.0.400",
+    "compilerVersion":  "5.9.0.0",
+    "msbuildVersion":  "18.9.6.38015",
+    "languageVersion":  "9.0",
+    "deterministic":  "true",
+    "continuousIntegrationBuild":  "true",
+    "pathMap":  "$(MSBuildThisFileDirectory)=/_/KnowledgeFramework/",
+    "externalInputs":  {
+                           "assemblyCSharp":  {
+                                                  "fileName":  "Assembly-CSharp.dll",
+                                                  "assemblyIdentity":  "Assembly-CSharp, Version=1.6.9676.17735, Culture=neutral, PublicKeyToken=null",
+                                                  "sha256":  "5CF1B5BE399D5B1C9C56CA72C9D35B4ECF307FEACF5859D04AC5A1AA5926356A"
+                                              },
+                           "unityCore":  {
+                                             "fileName":  "UnityEngine.CoreModule.dll",
+                                             "assemblyIdentity":  "UnityEngine.CoreModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                                             "sha256":  "C5C58EA254834291780A1D6C388C241443D07167B4A4B890A23C9494F626DDBA"
+                                         },
+                           "unityGui":  {
+                                            "fileName":  "UnityEngine.IMGUIModule.dll",
+                                            "assemblyIdentity":  "UnityEngine.IMGUIModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                                            "sha256":  "C6C39327211BE8299E2E9FFDEE7A979F228736C99B84FD54BC73F563456865D9"
+                                        },
+                           "unityText":  {
+                                             "fileName":  "UnityEngine.TextRenderingModule.dll",
+                                             "assemblyIdentity":  "UnityEngine.TextRenderingModule, Version=0.0.0.0, Culture=neutral, PublicKeyToken=null",
+                                             "sha256":  "B63769AD71C7FC79034CF6C3A1EBFCF79D4591F0B1F5CD4A9823E6ED7B5816F8"
+                                         },
+                           "harmony":  {
+                                           "fileName":  "0Harmony.dll",
+                                           "assemblyIdentity":  "0Harmony, Version=2.4.1.0, Culture=neutral, PublicKeyToken=null",
+                                           "sha256":  "353DAAFEC180BB8E7BBE4DA78F2A7CDC78067392E3A4E79DC8E7AF295F2371E6"
+                                       }
+                       },
+    "buildUtc":  "2026-09-08T16:48:16.2336335+00:00",
     "rimWorldTargetVersion":  "1.6"
 }
