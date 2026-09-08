@@ -47,6 +47,12 @@ deterministic source-tree hash, UTC build time, and RimWorld target version. The
 hash uses ordinal paths and canonical UTF-8 LF text bytes, so Windows and Linux checkouts
 produce the same release hash despite differing working-tree line endings.
 
+The repository pins the canonical SDK in `global.json` and the project pins
+the required C# language version. Release compilation enables deterministic
+CI output and maps the checkout root to a stable path. The build manifest
+also records the SDK/compiler/MSBuild identities, deterministic properties,
+and SHA-256 plus assembly identity for every external reference.
+
 ## Bridge adapter
 
 The optional adapter is built only when a local primary framework DLL and

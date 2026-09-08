@@ -1,7 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>Library</OutputType><TargetFramework>net472</TargetFramework><RootNamespace>KnowledgeFramework</RootNamespace><AssemblyName>KnowledgeFramework</AssemblyName><LangVersion>latest</LangVersion><Deterministic>true</Deterministic><AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath><GenerateAssemblyInfo>true</GenerateAssemblyInfo><DebugSymbols>false</DebugSymbols><DebugType>none</DebugType><Description>General-purpose epistemic gameplay framework for RimWorld.</Description>
+    <OutputType>Library</OutputType>
+    <TargetFramework>net472</TargetFramework>
+    <RootNamespace>KnowledgeFramework</RootNamespace>
+    <AssemblyName>KnowledgeFramework</AssemblyName>
+    <LangVersion>9.0</LangVersion>
+    <Deterministic>true</Deterministic>
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+    <PathMap>$(MSBuildThisFileDirectory)=/_/KnowledgeFramework/</PathMap>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateAssemblyInfo>true</GenerateAssemblyInfo>
+    <DebugSymbols>false</DebugSymbols>
+    <DebugType>none</DebugType>
+    <Description>General-purpose epistemic gameplay framework for RimWorld.</Description>
     <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RimWorldManagedPath)</KnowledgeFrameworkRimWorldManagedPath>
     <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_PATH)</KnowledgeFrameworkRimWorldManagedPath>
     <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_ASSEMBLIES)</KnowledgeFrameworkRimWorldManagedPath>

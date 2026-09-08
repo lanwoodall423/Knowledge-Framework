@@ -3,6 +3,10 @@ param(
     [string]$ManifestPath = (Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.build.json'),
     [string]$SourceRoot = (Join-Path $PSScriptRoot '..'),
     [string]$RimWorldTargetVersion = $env:RIMWORLD_TARGET_VERSION,
+    [string]$ManagedPath = $env:RIMWORLD_MANAGED_PATH,
+    [string]$HarmonyAssemblyPath = $env:RIMWORLD_HARMONY_ASSEMBLY,
+    [ValidateSet('Release')]
+    [string]$Configuration = 'Release',
     [switch]$Verify
 )
 
@@ -110,6 +114,58 @@ function Get-ManifestObject {
     catch { throw "Build manifest is not valid JSON: $Path`n$($_.Exception.Message)" }
 }
 
+function Get-ToolchainIdentity {
+    $sdkVersion = (& dotnet --version).Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($sdkVersion)) { throw 'Unable to determine the selected .NET SDK version.' }
+    $info = @(& dotnet --info)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to determine .NET SDK information.' }
+    $basePathLine = $info | Where-Object { $_ -match '^\s*Base Path:\s*(.+)$' } | Select-Object -First 1
+    if ($null -eq $basePathLine) { throw 'Unable to determine the selected .NET SDK base path.' }
+    $sdkBase = ([regex]::Match([string]$basePathLine, '^\s*Base Path:\s*(.+)$')).Groups[1].Value.Trim()
+    $compilerPath = Join-Path $sdkBase 'Roslyn/bincore/csc.dll'
+    if (-not (Test-Path -LiteralPath $compilerPath -PathType Leaf)) { throw "C# compiler is missing: $compilerPath" }
+    $compilerVersion = [Reflection.AssemblyName]::GetAssemblyName($compilerPath).Version.ToString()
+    $msbuildOutput = @(& dotnet msbuild -version -nologo)
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to determine the selected MSBuild version.' }
+    $msbuildVersion = ($msbuildOutput | Where-Object { $_ -match '^\d+\.\d+(\.\d+)?' } | Select-Object -Last 1).Trim()
+    if ([string]::IsNullOrWhiteSpace($msbuildVersion)) { throw 'Unable to parse the selected MSBuild version.' }
+    [ordered]@{
+        sdkVersion = $sdkVersion
+        compilerVersion = $compilerVersion
+        msbuildVersion = $msbuildVersion
+    }
+}
+
+function Get-ExternalAssemblyInput {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        throw "External build input is missing: $Path"
+    }
+    $assembly = [Reflection.AssemblyName]::GetAssemblyName($Path)
+    [ordered]@{
+        fileName = [IO.Path]::GetFileName($Path)
+        assemblyIdentity = $assembly.FullName
+        sha256 = (Get-FileHash -LiteralPath $Path -Algorithm SHA256).Hash.ToUpperInvariant()
+    }
+}
+
+function Get-ExternalBuildInputs {
+    param(
+        [string]$Managed,
+        [string]$Harmony
+    )
+    if ([string]::IsNullOrWhiteSpace($Managed) -or [string]::IsNullOrWhiteSpace($Harmony)) {
+        return $null
+    }
+    [ordered]@{
+        assemblyCSharp = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'Assembly-CSharp.dll')
+        unityCore = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.CoreModule.dll')
+        unityGui = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.IMGUIModule.dll')
+        unityText = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.TextRenderingModule.dll')
+        harmony = Get-ExternalAssemblyInput -Path $Harmony
+    }
+}
+
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $assemblyFull = [IO.Path]::GetFullPath($AssemblyPath)
 $manifestFull = [IO.Path]::GetFullPath($ManifestPath)
@@ -122,6 +178,16 @@ $assemblyName = [Reflection.AssemblyName]::GetAssemblyName($assemblyFull)
 $fileInfo = [Diagnostics.FileVersionInfo]::GetVersionInfo($assemblyFull)
 $dllHash = (Get-FileHash -LiteralPath $assemblyFull -Algorithm SHA256).Hash.ToUpperInvariant()
 $sourceHash = Get-SourceTreeHash -Root $sourceFull
+$projectPath = Join-Path $root 'Source/KnowledgeFramework.csproj'
+$projectXml = [xml](Get-Content -LiteralPath $projectPath -Raw)
+$propertyGroup = @($projectXml.Project.PropertyGroup | Where-Object { $_.TargetFramework }) | Select-Object -First 1
+$targetFramework = [string]$propertyGroup.TargetFramework
+$languageVersion = [string]$propertyGroup.LangVersion
+$deterministic = [string]$propertyGroup.Deterministic
+$continuousIntegrationBuild = [string]$propertyGroup.ContinuousIntegrationBuild
+$pathMap = [string]$propertyGroup.PathMap
+$toolchain = Get-ToolchainIdentity
+$externalInputs = Get-ExternalBuildInputs -Managed $ManagedPath -Harmony $HarmonyAssemblyPath
 
 if ($Verify) {
     $manifest = Get-ManifestObject -Path $manifestFull
@@ -134,6 +200,31 @@ if ($Verify) {
     if ($manifest.sourceTreeSha256 -ne $sourceHash) {
         throw "Build manifest source-tree SHA-256 does not match the current source tree. manifest=$($manifest.sourceTreeSha256) computed=$sourceHash"
     }
+    if ($manifest.configuration -ne $Configuration) { throw "Build manifest configuration mismatch: $($manifest.configuration) != $Configuration" }
+    if ($manifest.targetFramework -ne $targetFramework) { throw "Build manifest target framework mismatch: $($manifest.targetFramework) != $targetFramework" }
+    if ($manifest.sdkVersion -ne $toolchain.sdkVersion) { throw "Build manifest SDK mismatch: $($manifest.sdkVersion) != $($toolchain.sdkVersion)" }
+    if ($manifest.compilerVersion -ne $toolchain.compilerVersion) { throw "Build manifest compiler mismatch: $($manifest.compilerVersion) != $($toolchain.compilerVersion)" }
+    if ($manifest.msbuildVersion -ne $toolchain.msbuildVersion) { throw "Build manifest MSBuild mismatch: $($manifest.msbuildVersion) != $($toolchain.msbuildVersion)" }
+    if ($manifest.languageVersion -ne $languageVersion -or
+        $manifest.deterministic -ne $deterministic -or
+        $manifest.continuousIntegrationBuild -ne $continuousIntegrationBuild -or
+        $manifest.pathMap -ne $pathMap) {
+        throw 'Build manifest deterministic compilation properties do not match the project.'
+    }
+    $inputNames = @('assemblyCSharp', 'unityCore', 'unityGui', 'unityText', 'harmony')
+    foreach ($inputName in $inputNames) {
+        $manifestProperty = $manifest.externalInputs.PSObject.Properties[$inputName]
+        if ($null -eq $manifestProperty -or $null -eq $manifestProperty.Value) { throw "Build manifest external input is missing: $inputName" }
+        if ($null -ne $externalInputs) {
+            $currentInput = $externalInputs[$inputName]
+            if ($manifestProperty.Value.sha256 -ne $currentInput.sha256) {
+                throw "Build manifest external input hash mismatch: $inputName"
+            }
+            if ($manifestProperty.Value.assemblyIdentity -ne $currentInput.assemblyIdentity) {
+                throw "Build manifest external input identity mismatch: $inputName"
+            }
+        }
+    }
     if ($manifest.rimWorldTargetVersion -ne $RimWorldTargetVersion) { throw "Build manifest RimWorld target mismatch: $($manifest.rimWorldTargetVersion) != $RimWorldTargetVersion" }
     try { [DateTimeOffset]::Parse($manifest.buildUtc, [Globalization.CultureInfo]::InvariantCulture) | Out-Null }
     catch { throw "Build manifest buildUtc is invalid: $($manifest.buildUtc)" }
@@ -145,6 +236,7 @@ $manifestDirectory = Split-Path -Parent $manifestFull
 if (-not (Test-Path -LiteralPath $manifestDirectory -PathType Container)) { New-Item -ItemType Directory -Force -Path $manifestDirectory | Out-Null }
 $manifest = [ordered]@{
     manifestVersion = 1
+    buildContractVersion = 1
     semanticVersion = $version
     assemblyFile = [IO.Path]::GetFileName($assemblyFull)
     assemblyIdentity = $assemblyName.FullName
@@ -153,6 +245,16 @@ $manifest = [ordered]@{
     informationalVersion = $fileInfo.ProductVersion
     dllSha256 = $dllHash
     sourceTreeSha256 = $sourceHash
+    configuration = $Configuration
+    targetFramework = $targetFramework
+    sdkVersion = $toolchain.sdkVersion
+    compilerVersion = $toolchain.compilerVersion
+    msbuildVersion = $toolchain.msbuildVersion
+    languageVersion = $languageVersion
+    deterministic = $deterministic
+    continuousIntegrationBuild = $continuousIntegrationBuild
+    pathMap = $pathMap
+    externalInputs = $externalInputs
     buildUtc = [DateTimeOffset]::UtcNow.ToString('o', [Globalization.CultureInfo]::InvariantCulture)
     rimWorldTargetVersion = $RimWorldTargetVersion
 }

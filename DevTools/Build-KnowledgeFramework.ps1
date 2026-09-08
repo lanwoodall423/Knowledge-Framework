@@ -46,9 +46,9 @@ if ($LASTEXITCODE -ne 0) { throw "build=FAIL dotnet build exited with code $LAST
 
 $dll = Join-Path $output 'KnowledgeFramework.dll'
 if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) { throw "build=FAIL expected primary output is missing: $dll" }
-& $manifestScript -AssemblyPath $dll -ManifestPath $manifest -RimWorldTargetVersion $RimWorldTargetVersion
+& $manifestScript -AssemblyPath $dll -ManifestPath $manifest -RimWorldTargetVersion $RimWorldTargetVersion -ManagedPath $ManagedPath -HarmonyAssemblyPath $HarmonyAssemblyPath -Configuration $Configuration
 if ($LASTEXITCODE -ne 0) { throw "build=FAIL manifest generation exited with code $LASTEXITCODE." }
-& $manifestScript -AssemblyPath $dll -ManifestPath $manifest -RimWorldTargetVersion $RimWorldTargetVersion -Verify
+& $manifestScript -AssemblyPath $dll -ManifestPath $manifest -RimWorldTargetVersion $RimWorldTargetVersion -ManagedPath $ManagedPath -HarmonyAssemblyPath $HarmonyAssemblyPath -Configuration $Configuration -Verify
 if ($LASTEXITCODE -ne 0) { throw "build=FAIL manifest verification exited with code $LASTEXITCODE." }
 
 $unexpected = @(Get-ChildItem -LiteralPath $output -File | Where-Object { @('KnowledgeFramework.dll', 'KnowledgeFramework.build.json') -notcontains $_.Name })
