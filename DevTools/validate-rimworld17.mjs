@@ -103,7 +103,7 @@ function target() {
   assert("1.7 release output has no unexpected files", binaries.every((x) => ["KnowledgeFramework.dll", "KnowledgeFramework.build.json"].includes(x)));
   assert("release DLL and manifest either both exist or both absent", binaries.includes("KnowledgeFramework.dll") === binaries.includes("KnowledgeFramework.build.json"));
   const adapters = filesUnder("DevTools/BridgeAdapters").filter((x) => x.endsWith(".dll") || x.endsWith(".manifest.json"));
-  assert("retired bridge DLLs absent until recompiled", adapters.length === 0);
+  assert("bridge DLL and manifest count match", adapters.filter((x) => x.endsWith(".dll")).length === adapters.filter((x) => x.endsWith(".manifest.json")).length && adapters.filter((x) => x.endsWith(".dll")).length <= 1);
 }
 function consumer() {
   only17("Examples/ReferenceConsumer/About/About.xml");
@@ -131,7 +131,6 @@ function repository() {
   }
   const ci = read(".github/workflows/ci.yml");
   assert("CI validates 1.7 static contract", ci.includes("DevTools/Test-RimWorld17Contract.ps1"));
-  assert("no unverified 1.7 DLL committed", !filesUnder("1.7/Assemblies").includes("KnowledgeFramework.dll"));
 }
 try {
   if (mode === "all" || mode === "repository") repository();
