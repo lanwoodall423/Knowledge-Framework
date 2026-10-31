@@ -134,6 +134,7 @@ $bridgeDir = Join-Path $root 'DevTools/BridgeAdapters'
 $bridgeManifests = if (Test-Path -LiteralPath $bridgeDir -PathType Container) { @(Get-ChildItem -LiteralPath $bridgeDir -File -Filter '*.manifest.json') } else { @() }
 if ($bridgeManifests.Count -eq 0) { Block-Check -Name 'bridge-artifact' -Detail 'new 1.7 bridge adapter not built' }
 else { Invoke-LocalCheck -Name 'bridge-artifact' -Action { & (Join-Path $PSScriptRoot 'Test-BridgeAdapter.ps1') } }
+Invoke-LocalCheck -Name '1.7-target-contract' -Action { & (Join-Path $PSScriptRoot 'Test-RimWorld17Contract.ps1') }
 Invoke-LocalCheck -Name 'documentation-links' -Action { & (Join-Path $PSScriptRoot 'Test-DocumentationLinks.ps1') }
 Invoke-LocalCheck -Name 'development-stress-contract' -Action { & (Join-Path $PSScriptRoot 'Test-DevelopmentStressContract.ps1') }
 
