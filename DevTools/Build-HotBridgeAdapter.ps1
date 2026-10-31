@@ -1,7 +1,7 @@
 param(
     [string]$Destination = (Join-Path $PSScriptRoot 'BridgeAdapters'),
     [string]$PublisherPath = (Join-Path $PSScriptRoot '../../RimWorldDevBridge/DevTools/Publish-RimWorldBridgeAdapter.ps1'),
-    [string]$ManagedPath = $env:RIMWORLD_MANAGED_PATH,
+    [Alias('ManagedPath')] [string]$GameRoot = $env:RIMWORLD_GAME_ROOT,
     [string]$PrimaryAssemblyPath = $env:KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH
 )
 
@@ -17,14 +17,14 @@ if ([string]::IsNullOrWhiteSpace($releaseVersion)) { throw "Release version is e
 $stamp = Get-Date -Format 'yyyyMMddHHmmssfff'
 $assemblyName = "KnowledgeFramework.BridgeAdapter.$stamp"
 
-if ([string]::IsNullOrWhiteSpace($ManagedPath)) { $ManagedPath = $env:RIMWORLD_MANAGED_ASSEMBLIES }
+if ([string]::IsNullOrWhiteSpace($GameRoot)) { $GameRoot = $env:RIMWORLD_GAME_ROOT }
 if ([string]::IsNullOrWhiteSpace($PrimaryAssemblyPath)) { $PrimaryAssemblyPath = Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.dll' }
-if ([string]::IsNullOrWhiteSpace($ManagedPath) -or -not (Test-Path -LiteralPath $ManagedPath -PathType Container)) {
-    $display = if ([string]::IsNullOrWhiteSpace($ManagedPath)) { '<missing>' } else { $ManagedPath }
-    throw "adapterBuild=BLOCKED missing RimWorld Managed directory '$display'. Set -ManagedPath or RIMWORLD_MANAGED_PATH; proprietary assemblies are never downloaded."
+if ([string]::IsNullOrWhiteSpace($GameRoot) -or -not (Test-Path -LiteralPath $GameRoot -PathType Container)) {
+    $display = if ([string]::IsNullOrWhiteSpace($GameRoot)) { '<missing>' } else { $GameRoot }
+    throw "adapterBuild=BLOCKED missing RimWorld game installation root '$display'. Set -ManagedPath or RIMWORLD_GAME_ROOT; proprietary assemblies are never downloaded."
 }
-foreach ($name in @('Assembly-CSharp.dll', 'UnityEngine.CoreModule.dll')) {
-    $path = Join-Path $ManagedPath $name
+foreach ($name in @('Assembly-CSharp.dll', 'UnityStubs.dll', 'Waylith.dll')) {
+    $path = Join-Path $GameRoot $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "adapterBuild=BLOCKED missing required RimWorld assembly '$path'." }
 }
 if (-not (Test-Path -LiteralPath $PrimaryAssemblyPath -PathType Leaf)) { throw "adapterBuild=BLOCKED missing primary framework assembly '$PrimaryAssemblyPath'. Set -PrimaryAssemblyPath or KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH." }
@@ -36,7 +36,7 @@ if (Test-Path -LiteralPath $destination -PathType Container) {
     Get-ChildItem -LiteralPath $destination -File -Filter 'KnowledgeFramework.*.manifest.json' |
         Remove-Item -Force
 }
-dotnet build $project -c Release "-p:AssemblyName=$assemblyName" "-p:OutputPath=$build" "-p:KnowledgeFrameworkRimWorldManagedPath=$ManagedPath" "-p:KnowledgeFrameworkPrimaryAssemblyPath=$PrimaryAssemblyPath"
+dotnet build $project -c Release "-p:AssemblyName=$assemblyName" "-p:OutputPath=$build" "-p:KnowledgeFrameworkRimWorldManagedPath=$GameRoot" "-p:KnowledgeFrameworkPrimaryAssemblyPath=$PrimaryAssemblyPath"
 if ($LASTEXITCODE -ne 0) { throw "Knowledge Framework hot adapter build failed with exit code $LASTEXITCODE." }
 if (-not (Test-Path -LiteralPath $publisher -PathType Leaf)) { throw "Bridge adapter publisher not found: $publisher" }
 

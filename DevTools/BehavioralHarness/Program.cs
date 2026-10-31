@@ -8,9 +8,8 @@ internal static class Program
 {
     private static readonly string[] RequiredAssemblies =
     {
-        "UnityEngine.CoreModule.dll",
-        "UnityEngine.IMGUIModule.dll",
-        "UnityEngine.TextRenderingModule.dll",
+        "UnityStubs.dll",
+        "Waylith.dll",
         "0Harmony.dll",
         "Assembly-CSharp.dll"
     };
@@ -19,15 +18,15 @@ internal static class Program
     {
         try
         {
-            string managedPath = GetOption(args, "managed") ??
-                Environment.GetEnvironmentVariable("RIMWORLD_MANAGED_PATH");
-            if (string.IsNullOrWhiteSpace(managedPath))
+            string gameRoot = GetOption(args, "game-root") ??
+                Environment.GetEnvironmentVariable("RIMWORLD_GAME_ROOT");
+            if (string.IsNullOrWhiteSpace(gameRoot))
             {
-                Console.Error.WriteLine("behavioralSuite=BLOCKED expected=RimWorld managed assemblies actual=missing --managed path");
+                Console.Error.WriteLine("behavioralSuite=BLOCKED expected=RimWorld managed assemblies actual=missing --game-root path");
                 return 2;
             }
 
-            LoadRequiredAssemblies(managedPath);
+            LoadRequiredAssemblies(gameRoot);
             Assembly targetAssembly = typeof(KnowledgeFrameworkVerification).Assembly;
             string assemblyPath = GetOption(args, "assembly");
             if (!string.IsNullOrWhiteSpace(assemblyPath)) targetAssembly = Assembly.LoadFile(Path.GetFullPath(assemblyPath));
@@ -58,13 +57,13 @@ internal static class Program
         }
     }
 
-    private static void LoadRequiredAssemblies(string managedPath)
+    private static void LoadRequiredAssemblies(string gameRoot)
     {
         string harmonyPath = Environment.GetEnvironmentVariable("RIMWORLD_HARMONY_PATH");
         AppDomain.CurrentDomain.AssemblyResolve += (sender, eventArgs) =>
         {
             string fileName = new AssemblyName(eventArgs.Name).Name + ".dll";
-            string managedFile = Path.Combine(managedPath, fileName);
+            string managedFile = Path.Combine(gameRoot, fileName);
             if (File.Exists(managedFile)) return Assembly.LoadFrom(managedFile);
             if (!string.IsNullOrWhiteSpace(harmonyPath))
             {
@@ -77,7 +76,7 @@ internal static class Program
         {
             string path = name == "0Harmony.dll" && !string.IsNullOrWhiteSpace(harmonyPath)
                 ? Path.Combine(harmonyPath, name)
-                : Path.Combine(managedPath, name);
+                : Path.Combine(gameRoot, name);
             if (!File.Exists(path))
                 throw new FileNotFoundException("required runtime assembly is missing: " + path, path);
             Assembly.LoadFrom(path);

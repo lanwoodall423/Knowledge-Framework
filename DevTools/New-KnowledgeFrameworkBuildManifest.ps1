@@ -3,7 +3,7 @@ param(
     [string]$ManifestPath = (Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.build.json'),
     [string]$SourceRoot = (Join-Path $PSScriptRoot '..'),
     [string]$RimWorldTargetVersion = $env:RIMWORLD_TARGET_VERSION,
-    [string]$ManagedPath = $env:RIMWORLD_MANAGED_PATH,
+    [Alias('ManagedPath')] [string]$GameRoot = $env:RIMWORLD_GAME_ROOT,
     [string]$HarmonyAssemblyPath = $env:RIMWORLD_HARMONY_ASSEMBLY,
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
@@ -171,6 +171,7 @@ $manifestFull = [IO.Path]::GetFullPath($ManifestPath)
 $sourceFull = [IO.Path]::GetFullPath($SourceRoot)
 if ([string]::IsNullOrWhiteSpace($RimWorldTargetVersion)) { $RimWorldTargetVersion = '1.7' }
 if ($RimWorldTargetVersion -ne '1.7') { throw 'Only RimWorld 1.7 build manifests are supported.' }
+if ($RimWorldTargetVersion -ne '1.7') { throw 'buildManifest=BLOCKED RimWorld 1.7 is the only supported target.' }
 if (-not (Test-Path -LiteralPath $assemblyFull -PathType Leaf)) { throw "Primary assembly is missing: $assemblyFull" }
 
 $version = Read-ReleaseVersion -Root $root
@@ -187,7 +188,7 @@ $deterministic = [string]$propertyGroup.Deterministic
 $continuousIntegrationBuild = [string]$propertyGroup.ContinuousIntegrationBuild
 $pathMap = [string]$propertyGroup.PathMap
 $toolchain = Get-ToolchainIdentity
-$externalInputs = Get-ExternalBuildInputs -Managed $ManagedPath -Harmony $HarmonyAssemblyPath
+$externalInputs = Get-ExternalBuildInputs -Managed $GameRoot -Harmony $HarmonyAssemblyPath
 
 if ($Verify) {
     $manifest = Get-ManifestObject -Path $manifestFull
