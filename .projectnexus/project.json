@@ -10,11 +10,11 @@
         "tier": "development-confidence",
         "taskCheckName": "Knowledge Framework 1.7 static target contract",
         "command": {
-          "executable": "pwsh",
+          "executable": "node",
           "args": [
-            "-NoProfile",
-            "-File",
-            "DevTools/Test-RimWorld17Contract.ps1"
+            "DevTools/validate-rimworld17.mjs",
+            "--check",
+            "target"
           ],
           "cwd": "."
         },
@@ -36,12 +36,11 @@
         "tier": "development-confidence",
         "taskCheckName": "Knowledge Framework static verification",
         "command": {
-          "executable": "pwsh",
+          "executable": "node",
           "args": [
-            "-NoProfile",
-            "-File",
-            "DevTools/Verify-KnowledgeFramework.ps1",
-            "-AllowBlockedIntegration"
+            "DevTools/validate-rimworld17.mjs",
+            "--check",
+            "repository"
           ],
           "cwd": "."
         },
@@ -63,11 +62,11 @@
         "tier": "development-confidence",
         "taskCheckName": "Reference consumer static contract",
         "command": {
-          "executable": "pwsh",
+          "executable": "node",
           "args": [
-            "-NoProfile",
-            "-File",
-            "Examples/ReferenceConsumer/Verify-ReferenceConsumer.ps1"
+            "DevTools/validate-rimworld17.mjs",
+            "--check",
+            "consumer"
           ],
           "cwd": "."
         },
