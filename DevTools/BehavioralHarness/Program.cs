@@ -8,9 +8,8 @@ internal static class Program
 {
     private static readonly string[] RequiredAssemblies =
     {
-        "UnityEngine.CoreModule.dll",
-        "UnityEngine.IMGUIModule.dll",
-        "UnityEngine.TextRenderingModule.dll",
+"UnityStubs.dll",
+        "Waylith.dll",
         "0Harmony.dll",
         "Assembly-CSharp.dll"
     };

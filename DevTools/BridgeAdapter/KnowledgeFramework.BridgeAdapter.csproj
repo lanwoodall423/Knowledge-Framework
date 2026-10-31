@@ -2,7 +2,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Library</OutputType>
-    <TargetFramework>net48</TargetFramework>
+    <TargetFramework>net10.0</TargetFramework>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
     <RootNamespace>KnowledgeFrameworkBridgeAdapter</RootNamespace>
     <AssemblyName>KnowledgeFramework.BridgeAdapter</AssemblyName>
     <LangVersion>latest</LangVersion>
@@ -16,9 +17,9 @@
     <KnowledgeFrameworkRimWorldManagedPath Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''">$(RIMWORLD_MANAGED_ASSEMBLIES)</KnowledgeFrameworkRimWorldManagedPath>
     <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(KnowledgeFrameworkAssemblyPath)</KnowledgeFrameworkPrimaryAssemblyPath>
     <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH)</KnowledgeFrameworkPrimaryAssemblyPath>
-    <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(MSBuildThisFileDirectory)../../1.6/Assemblies/KnowledgeFramework.dll</KnowledgeFrameworkPrimaryAssemblyPath>
+    <KnowledgeFrameworkPrimaryAssemblyPath Condition="'$(KnowledgeFrameworkPrimaryAssemblyPath)' == ''">$(MSBuildThisFileDirectory)../../1.7/Assemblies/KnowledgeFramework.dll</KnowledgeFrameworkPrimaryAssemblyPath>
     <KnowledgeFrameworkAdapterAssemblyCSharpPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'Assembly-CSharp.dll'))</KnowledgeFrameworkAdapterAssemblyCSharpPath>
-    <KnowledgeFrameworkAdapterUnityCorePath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityEngine.CoreModule.dll'))</KnowledgeFrameworkAdapterUnityCorePath>
+    <KnowledgeFrameworkAdapterUnityStubsPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'UnityStubs.dll'))</KnowledgeFrameworkAdapterUnityStubsPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
     <Optimize>true</Optimize>
@@ -29,10 +30,11 @@
         <HintPath>$(KnowledgeFrameworkAdapterAssemblyCSharpPath)</HintPath>
       <Private>false</Private>
     </Reference>
-    <Reference Include="UnityEngine.CoreModule">
-        <HintPath>$(KnowledgeFrameworkAdapterUnityCorePath)</HintPath>
+    <Reference Include="UnityStubs">
+        <HintPath>$(KnowledgeFrameworkAdapterUnityStubsPath)</HintPath>
       <Private>false</Private>
     </Reference>
+    <Reference Include="Waylith"><HintPath>$([System.IO.Path]::Combine('$(KnowledgeFrameworkRimWorldManagedPath)', 'Waylith.dll'))</HintPath><Private>false</Private></Reference>
     <Reference Include="KnowledgeFramework">
       <HintPath>$(KnowledgeFrameworkPrimaryAssemblyPath)</HintPath>
       <Private>false</Private>
@@ -41,7 +43,7 @@
   <Target Name="ValidateKnowledgeFrameworkBridgeDependencies" BeforeTargets="ResolveReferences">
     <Error Condition="'$(KnowledgeFrameworkRimWorldManagedPath)' == ''" Text="Bridge adapter build blocked: set KnowledgeFrameworkRimWorldManagedPath or RIMWORLD_MANAGED_PATH to a local RimWorld Managed directory." />
     <Error Condition="!Exists('$(KnowledgeFrameworkAdapterAssemblyCSharpPath)')" Text="Bridge adapter build blocked: missing Assembly-CSharp.dll at '$(KnowledgeFrameworkAdapterAssemblyCSharpPath)'. No proprietary assemblies are downloaded." />
-    <Error Condition="!Exists('$(KnowledgeFrameworkAdapterUnityCorePath)')" Text="Bridge adapter build blocked: missing UnityEngine.CoreModule.dll at '$(KnowledgeFrameworkAdapterUnityCorePath)'. No proprietary assemblies are downloaded." />
+    <Error Condition="!Exists('$(KnowledgeFrameworkAdapterUnityStubsPath)')" Text="Bridge adapter build blocked: missing UnityStubs.dll at '$(KnowledgeFrameworkAdapterUnityStubsPath)'. No proprietary assemblies are downloaded." />
     <Error Condition="!Exists('$(KnowledgeFrameworkPrimaryAssemblyPath)')" Text="Bridge adapter build blocked: missing KnowledgeFramework.dll at '$(KnowledgeFrameworkPrimaryAssemblyPath)'. Build the primary framework first or set KnowledgeFrameworkPrimaryAssemblyPath/KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH." />
   </Target>
 </Project>

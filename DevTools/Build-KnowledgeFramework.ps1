@@ -10,7 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $project = Join-Path $root 'Source/KnowledgeFramework.csproj'
-$output = Join-Path $root '1.7/Assemblies'
+$output = Join-Path $root '1.6/Assemblies'
 $manifest = Join-Path $output 'KnowledgeFramework.build.json'
 $manifestScript = Join-Path $PSScriptRoot 'New-KnowledgeFrameworkBuildManifest.ps1'
 
@@ -19,8 +19,7 @@ if ([string]::IsNullOrWhiteSpace($HarmonyAssemblyPath) -and -not [string]::IsNul
     if (Test-Path -LiteralPath $HarmonyPath -PathType Leaf) { $HarmonyAssemblyPath = $HarmonyPath }
     else { $HarmonyAssemblyPath = Join-Path $HarmonyPath '0Harmony.dll' }
 }
-if ([string]::IsNullOrWhiteSpace($RimWorldTargetVersion)) { $RimWorldTargetVersion = '1.7' }
-if ($RimWorldTargetVersion -ne '1.7') { throw 'build=BLOCKED Only RimWorld 1.7 is supported.' }
+if ([string]::IsNullOrWhiteSpace($RimWorldTargetVersion)) { $RimWorldTargetVersion = '1.6' }
 
 if ([string]::IsNullOrWhiteSpace($ManagedPath) -or -not (Test-Path -LiteralPath $ManagedPath -PathType Container)) {
     $display = if ([string]::IsNullOrWhiteSpace($ManagedPath)) { '<missing>' } else { $ManagedPath }
@@ -31,7 +30,7 @@ if ([string]::IsNullOrWhiteSpace($HarmonyAssemblyPath) -or -not (Test-Path -Lite
     throw "build=BLOCKED missing 0Harmony.dll '$display'. Set -HarmonyAssemblyPath/RIMWORLD_HARMONY_ASSEMBLY or -HarmonyPath/RIMWORLD_HARMONY_PATH."
 }
 
-$required = @('Assembly-CSharp.dll', 'UnityStubs.dll', 'Waylith.dll')
+$required = @('Assembly-CSharp.dll', 'UnityEngine.CoreModule.dll', 'UnityEngine.IMGUIModule.dll', 'UnityEngine.TextRenderingModule.dll')
 foreach ($name in $required) {
     $path = Join-Path $ManagedPath $name
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "build=BLOCKED missing required RimWorld assembly '$path'." }

@@ -11,12 +11,12 @@
   "sourceProject": "Source/KnowledgeFramework.csproj",
   "configuration": "Release",
   "expectedAssembly": "KnowledgeFramework.dll",
-  "deploymentTarget": "1.6/Assemblies/KnowledgeFramework.dll",
+  "deploymentTarget": "1.7/Assemblies/KnowledgeFramework.dll",
   "testRecipe": "knowledge-framework-release-runtime",
   "testRecipePath": ".rimdev/recipes/knowledge-framework-release-runtime.json",
   "runtimePackage": {
     "sourceRoot": ".",
-    "include": ["About/**", "LoadFolders.xml", "1.*/**"],
+    "include": ["About/**", "LoadFolders.xml", "1.7/**"],
     "exclude": [".rimdev/**", ".rimctx/**", "Source/**", "bin/**", "obj/**", "artifacts/**", "diagnostics/**", "evidence/**"]
   },
   "dependencies": []
