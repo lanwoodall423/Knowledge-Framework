@@ -5,7 +5,7 @@
   <packageId>lan.knowledgeframework.referenceconsumer</packageId>
   <modVersion>3.0.0-beta.1</modVersion>
   <supportedVersions>
-    <li>1.6</li>
+    <li>1.7</li>
   </supportedVersions>
   <dependencies>
     <li>
