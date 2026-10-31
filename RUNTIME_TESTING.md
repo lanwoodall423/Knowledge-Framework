@@ -11,7 +11,7 @@ pwsh ./DevTools/Test-DevelopmentStressContract.ps1
 
 ## New-Game Scenario
 
-1. Start a new RimWorld 1.6 game with Harmony, Knowledge Framework, and one test
+1. Start a new RimWorld 1.7 game with Harmony, Knowledge Framework, and one test
    consumer enabled.
 2. Confirm the consumer domain, subjects, facets, stages, and localization appear.
 3. Run the framework behavioral debug action and the bounded V3 stress validation
@@ -49,26 +49,26 @@ state without downloading files. Do not treat this as a successful runtime test.
 
 ## Exact Local Commands
 
-Use only paths to assemblies already installed by the local RimWorld copy. These
+Use only paths to assemblies already installed by the local RimWorld copy. The 1.7 game assemblies live at the installation root, **not** under the former Unity `Managed` folder. These
 commands build the framework and run the non-game behavioral checks; they do not
 start RimWorld or copy proprietary assemblies into this repository.
 
 Windows PowerShell:
 
 ```powershell
-$managed = 'C:\Path\To\RimWorldWin64_Data\Managed'
+$gameRoot = 'C:\Path\To\RimWorld'
 $harmony = 'C:\Path\To\0Harmony.dll'
-& .\DevTools\Build-KnowledgeFramework.ps1 -ManagedPath $managed -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.6'
-& .\DevTools\Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -ManagedPath $managed -HarmonyPath $harmony -AssemblyPath (Resolve-Path '.\1.6\Assemblies\KnowledgeFramework.dll').Path
+& .\DevTools\Build-KnowledgeFramework.ps1 -GameRoot $gameRoot -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.7'
+& .\DevTools\Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -GameRoot $gameRoot -HarmonyPath $harmony -AssemblyPath (Resolve-Path '.\1.7/Assemblies\KnowledgeFramework.dll').Path
 ```
 
 PowerShell 7 on Windows or Linux:
 
 ```powershell
-$managed = '/path/to/RimWorldWin64_Data/Managed'
+$gameRoot = '/path/to/RimWorld'
 $harmony = '/path/to/0Harmony.dll'
-pwsh ./DevTools/Build-KnowledgeFramework.ps1 -ManagedPath $managed -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.6'
-pwsh ./DevTools/Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -ManagedPath $managed -HarmonyPath $harmony -AssemblyPath (Resolve-Path './1.6/Assemblies/KnowledgeFramework.dll').Path
+pwsh ./DevTools/Build-KnowledgeFramework.ps1 -GameRoot $gameRoot -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.7'
+pwsh ./DevTools/Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -GameRoot $gameRoot -HarmonyPath $harmony -AssemblyPath (Resolve-Path './1.7/Assemblies/KnowledgeFramework.dll').Path
 ```
 
 The final stress step is deliberately in-game: start or load the disposable test

@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased — RimWorld 1.7 / Waylith (migration draft)
+
+- Retire RimWorld 1.6 runtime targets, packaged resources and outdated compiled artifacts.
+- Move project targets to .NET 10 and use Waylith/UnityStubs references from the installed game root with Harmony 3.
+- Rebuild and runtime verification remain outstanding; no 1.7 release is claimed. See [roadmap](ROADMAP_1_7_WAYLITH.md).
+
+
 ## 3.1.0-beta.2
 
 - Added public-adoption documentation and a manually invoked bounded V3 stress

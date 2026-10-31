@@ -1,6 +1,6 @@
 # Knowledge Framework Reference Consumer
 
-This is a deliberately small, separate RimWorld 1.6 consumer mod. It is
+This is a deliberately small, separate RimWorld 1.7 consumer mod. It is
 executable documentation and a compatibility fixture, not part of the
 Knowledge Framework package. The framework root `LoadFolders.xml` does not
 load anything under `Examples`; install this folder as its own mod when
@@ -11,8 +11,8 @@ assemblies. Its project accepts local dependency paths only.
 
 ## Installation
 
-1. Build or obtain the framework's `1.6/Assemblies/KnowledgeFramework.dll`.
-2. Build this project against a legitimate local RimWorld 1.6 `Managed`
+1. Build or obtain the framework's `1.7/Assemblies/KnowledgeFramework.dll`.
+2. Build this project against a legitimate local RimWorld 1.7 installation root
    directory using the commands below.
 3. Copy or symlink this `Examples/ReferenceConsumer` directory into the
    RimWorld `Mods` directory as a separate mod.
@@ -21,20 +21,20 @@ assemblies. Its project accepts local dependency paths only.
 PowerShell 5.1 or 7 on Windows:
 
 ```powershell
-$env:RIMWORLD_MANAGED_PATH = 'D:\Games\RimWorld\RimWorldWin64_Data\Managed'
-$env:KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH = (Resolve-Path '.\1.6\Assemblies\KnowledgeFramework.dll').Path
+$env:RIMWORLD_GAME_ROOT = 'D:\Games\RimWorld\RimWorld'
+$env:KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH = (Resolve-Path '.\1.7/Assemblies\KnowledgeFramework.dll').Path
 dotnet build .\Examples\ReferenceConsumer\ReferenceConsumer.csproj -c Release
 ```
 
 PowerShell 7 on Windows or Linux:
 
 ```powershell
-$env:RIMWORLD_MANAGED_PATH = '/path/to/RimWorldWin64_Data/Managed'
-$env:KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH = (Resolve-Path './1.6/Assemblies/KnowledgeFramework.dll').Path
+$env:RIMWORLD_GAME_ROOT = '/path/to/RimWorld'
+$env:KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH = (Resolve-Path './1.7/Assemblies/KnowledgeFramework.dll').Path
 dotnet build ./Examples/ReferenceConsumer/ReferenceConsumer.csproj -c Release
 ```
 
-The same values may be supplied through `RIMWORLD_MANAGED_PATH` and
+The same values may be supplied through `RIMWORLD_GAME_ROOT` and
 `KNOWLEDGEFRAMEWORK_ASSEMBLY_PATH`. Missing local files produce a clear
 `BLOCKED` build error. No Harmony reference is needed by this consumer.
 

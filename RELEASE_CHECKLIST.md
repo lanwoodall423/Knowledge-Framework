@@ -1,11 +1,11 @@
 # Release Checklist
 
-**Release hold:** a real 1.7/Harmony 3 build, manifest, API audit, and RimTest evidence are required. The removed 1.6 artifact must not be reused.
+**Release hold:** a real 1.7/Harmony 3 build, manifest, API audit, and RimTest evidence are required. An obsolete 1.6 binary must not be reused.
 
 - Confirm the release decision and update `VERSION`.
 - Confirm `About/About.xml`, documentation, assembly metadata, API baseline, and
   bridge manifest use the same semantic release version.
-- Run `pwsh ./DevTools/Verify-KnowledgeFramework.ps1 -AllowBlockedIntegration`.
+- Run `pwsh ./DevTools/Test-RimWorld17Contract.ps1` and `pwsh ./DevTools/Verify-KnowledgeFramework.ps1 -AllowBlockedIntegration` (static only).
 - Run `pwsh ./Examples/ReferenceConsumer/Verify-ReferenceConsumer.ps1`.
 - With legitimate local dependencies, run the Release build in [BUILDING.md](BUILDING.md).
 - Verify `1.7/Assemblies/KnowledgeFramework.dll` and its build manifest hashes.

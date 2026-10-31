@@ -15,8 +15,7 @@ and is loaded before the framework. The framework is useful by itself: with no
 consumer domains it registers no gameplay content, displays no consumer subjects,
 and remains idle apart from its normal startup registration.
 
-The framework does not include RimWorld, Unity, or Harmony assemblies. Those files
-are supplied by the game and the Harmony mod.
+The framework does not include RimWorld, Waylith, UnityStubs or Harmony assemblies. All game reference files are supplied by the installed game; Harmony 3 is supplied by the separate mod.
 
 ## Mod-Author Dependency
 
@@ -79,7 +78,7 @@ order. A framework-only installation intentionally has no consumer domains.
 
 ### A local build reports missing assemblies
 
-Supply a legitimate local RimWorld Managed directory and Harmony assembly. The
+Supply a legitimate local RimWorld 1.7 installation root and Harmony 3 assembly. The
 build scripts never download proprietary files; see [BUILDING.md](BUILDING.md).
 
 ### The API audit reports a change
@@ -97,6 +96,7 @@ idempotent migration. See [RUNTIME_TESTING.md](RUNTIME_TESTING.md).
 
 ## Project Documents
 
+- [RimWorld 1.7 / Waylith migration roadmap](ROADMAP_1_7_WAYLITH.md)
 - [Integration guide](INTEGRATION.md)
 - [Compatibility contract](API_COMPATIBILITY.md)
 - [Public API classifications](PUBLIC_API.md)
