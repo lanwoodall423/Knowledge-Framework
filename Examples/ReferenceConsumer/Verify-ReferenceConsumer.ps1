@@ -12,7 +12,7 @@ function Require-File([string]$relative) {
 }
 
 foreach ($file in @('About/About.xml', 'LoadFolders.xml', 'ReferenceConsumer.csproj', 'ReferenceConsumerMod.cs', 'README.md',
-        '1.7/Defs/ReferenceConsumer_Knowledge.xml', '1.7/Languages/English/Keyed/ReferenceConsumer.xml')) { Require-File $file }
+        '1.6/Defs/ReferenceConsumer_Knowledge.xml', '1.6/Languages/English/Keyed/ReferenceConsumer.xml')) { Require-File $file }
 
 foreach ($xml in @(Get-ChildItem -LiteralPath $root -Recurse -File -Filter '*.xml')) {
     try { [xml](Get-Content -LiteralPath $xml.FullName -Raw) | Out-Null; Pass-Check ('xml ' + $xml.Name) }
@@ -30,7 +30,7 @@ if ((Test-Path -LiteralPath $frameworkLoadFolders) -and
     (Get-Content -LiteralPath $frameworkLoadFolders -Raw) -notmatch 'Examples|ReferenceConsumer') { Pass-Check 'framework loader isolation' }
 else { Fail-Check 'framework loader isolation' }
 
-$defs = Get-Content -LiteralPath (Join-Path $root '1.7/Defs/ReferenceConsumer_Knowledge.xml') -Raw
+$defs = Get-Content -LiteralPath (Join-Path $root '1.6/Defs/ReferenceConsumer_Knowledge.xml') -Raw
 $requiredIds = @('reference.field-guide', 'observation', 'habitat', 'temperature', 'fieldcraft', 'field-guide',
     'reference.region', 'reference.observed-from', 'reference-specimen')
 foreach ($id in $requiredIds) {
@@ -54,7 +54,7 @@ if ($source -notmatch 'KnowledgeRegistry\.BuildDefSchemas' -and $source -notmatc
 }
 else { Fail-Check 'consumer does not control schema construction or replace registrations' }
 
-$translations = Get-Content -LiteralPath (Join-Path $root '1.7/Languages/English/Keyed/ReferenceConsumer.xml') -Raw
+$translations = Get-Content -LiteralPath (Join-Path $root '1.6/Languages/English/Keyed/ReferenceConsumer.xml') -Raw
 foreach ($key in @('ReferenceConsumer_DomainLabel', 'ReferenceConsumer_FacetObservation', 'ReferenceConsumer_FacetHabitat',
         'ReferenceConsumer_StageStudied', 'ReferenceConsumer_MilestoneDocumented', 'ReferenceConsumer_SubjectReference')) {
     if ($translations.Contains('<' + $key + '>')) { Pass-Check ('translation ' + $key) }
