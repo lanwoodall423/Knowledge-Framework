@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Validate bounded ProjectNexus-friendly 1.7 contract
+        shell: bash
+        run: node DevTools/validate-rimworld17.mjs --check repository
       - name: Assert RimWorld 1.7 / Waylith-only target
         shell: pwsh
         run: ./DevTools/Test-RimWorld17Contract.ps1
