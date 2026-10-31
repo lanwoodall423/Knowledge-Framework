@@ -161,7 +161,12 @@ else { Fail-Check -Name 'configurable-dependencies' -Detail (($absoluteHints | F
 
 $assemblyOutput = Join-Path $root '1.7/Assemblies'
 $allowedAssemblyFiles = @('KnowledgeFramework.dll', 'KnowledgeFramework.build.json')
-$assemblyFiles = if (Test-Path -LiteralPath $assemblyOutput -PathType Container) { @(Get-ChildItem -LiteralPath $assemblyOutput -File) } else { Block-Check -Name 'release-output-directory' -Detail '1.7/Assemblies not built'; @() }
+if (Test-Path -LiteralPath $assemblyOutput -PathType Container) {
+    $assemblyFiles = @(Get-ChildItem -LiteralPath $assemblyOutput -File)
+} else {
+    $assemblyFiles = @()
+    Block-Check -Name 'release-output-directory' -Detail '1.7/Assemblies not built'
+}
 $unexpectedAssemblyFiles = @($assemblyFiles | Where-Object { $allowedAssemblyFiles -notcontains $_.Name })
 if ($unexpectedAssemblyFiles.Count -eq 0) { Pass-Check -Name 'release-output-layout' -Detail (($assemblyFiles | ForEach-Object Name) -join ', ') }
 else { Fail-Check -Name 'release-output-layout' -Detail ('unexpected ' + (($unexpectedAssemblyFiles | ForEach-Object Name) -join ', ')) }
