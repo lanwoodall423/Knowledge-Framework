@@ -51,12 +51,12 @@ $requiredFiles = @(
     'README.md',
     'About/About.xml',
     'LoadFolders.xml',
-    '1.6/Assemblies/KnowledgeFramework.dll',
-    '1.6/Assemblies/KnowledgeFramework.build.json',
-    '1.6/Defs/KnowledgeFramework_Defaults.xml',
-    '1.6/Defs/MainButtonDefs.xml',
-    '1.6/Languages/English/Keyed/KnowledgeFramework.xml',
-    '1.6/Languages/English/DefInjected/MainButtonDef/KnowledgeFramework.xml',
+    '1.7/Assemblies/KnowledgeFramework.dll',
+    '1.7/Assemblies/KnowledgeFramework.build.json',
+    '1.7/Defs/KnowledgeFramework_Defaults.xml',
+    '1.7/Defs/MainButtonDefs.xml',
+    '1.7/Languages/English/Keyed/KnowledgeFramework.xml',
+    '1.7/Languages/English/DefInjected/MainButtonDef/KnowledgeFramework.xml',
     'DevTools/PublicApiBaseline.txt',
     'API_COMPATIBILITY.md',
     'PUBLIC_API.md',
@@ -84,7 +84,7 @@ foreach ($file in $xmlFiles) {
 if ($xmlInvalid.Count -eq 0) { Pass-Check -Name 'xml-validity' -Detail ("{0} files" -f $xmlFiles.Count) }
 else { Fail-Check -Name 'xml-validity' -Detail (($xmlInvalid -join ', ')) }
 
-$keyedPath = Join-Path $root '1.6/Languages/English/Keyed/KnowledgeFramework.xml'
+$keyedPath = Join-Path $root '1.7/Languages/English/Keyed/KnowledgeFramework.xml'
 try {
     $keyedXml = [xml](Get-Content -LiteralPath $keyedPath -Raw)
     $definedKeys = New-Object Collections.Generic.HashSet[string]([StringComparer]::Ordinal)
@@ -133,7 +133,7 @@ $absoluteHints = @($sourceProjects | ForEach-Object {
 if ($absoluteHints.Count -eq 0) { Pass-Check -Name 'configurable-dependencies' -Detail 'no absolute HintPath values' }
 else { Fail-Check -Name 'configurable-dependencies' -Detail (($absoluteHints | ForEach-Object { $_.Path + ':' + $_.LineNumber }) -join ', ') }
 
-$assemblyOutput = Join-Path $root '1.6/Assemblies'
+$assemblyOutput = Join-Path $root '1.7/Assemblies'
 $allowedAssemblyFiles = @('KnowledgeFramework.dll', 'KnowledgeFramework.build.json')
 $assemblyFiles = @(Get-ChildItem -LiteralPath $assemblyOutput -File)
 $unexpectedAssemblyFiles = @($assemblyFiles | Where-Object { $allowedAssemblyFiles -notcontains $_.Name })

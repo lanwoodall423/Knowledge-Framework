@@ -1,5 +1,5 @@
 param(
-    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.dll'),
+    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.dll'),
     [string]$ManifestDirectory = (Join-Path $PSScriptRoot 'BridgeAdapters')
 )
 
@@ -9,7 +9,7 @@ $versionPath = Join-Path $root 'VERSION'
 $aboutPath = Join-Path $root 'About/About.xml'
 $publicApiPath = Join-Path $root 'PUBLIC_API.md'
 $compatibilityPath = Join-Path $root 'API_COMPATIBILITY.md'
-$buildManifestPath = Join-Path $root '1.6/Assemblies/KnowledgeFramework.build.json'
+$buildManifestPath = Join-Path $root '1.7/Assemblies/KnowledgeFramework.build.json'
 
 if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) { throw "VERSION is missing: $versionPath" }
 $version = (Get-Content -LiteralPath $versionPath -Raw).Trim()

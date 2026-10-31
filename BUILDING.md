@@ -12,7 +12,7 @@ PowerShell 7 is supported on Windows and Linux:
 pwsh ./DevTools/Build-KnowledgeFramework.ps1 `
   -ManagedPath /path/to/RimWorldWin64_Data/Managed `
   -HarmonyPath /path/to/0Harmony-directory `
-  -RimWorldTargetVersion 1.6
+  -RimWorldTargetVersion 1.7
 ```
 
 On Windows PowerShell 5.1, use the same script with Windows paths:
@@ -39,8 +39,8 @@ The same locations may be supplied through `RIMWORLD_MANAGED_PATH` or
 
 Release output is intentionally limited to:
 
-- `1.6/Assemblies/KnowledgeFramework.dll`
-- `1.6/Assemblies/KnowledgeFramework.build.json`
+- `1.7/Assemblies/KnowledgeFramework.dll`
+- `1.7/Assemblies/KnowledgeFramework.build.json`
 
 The manifest records the semantic version, assembly identity, DLL hash,
 deterministic source-tree hash, UTC build time, and RimWorld target version. The source-tree

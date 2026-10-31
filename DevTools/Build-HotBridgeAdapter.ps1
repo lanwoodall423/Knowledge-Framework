@@ -18,7 +18,7 @@ $stamp = Get-Date -Format 'yyyyMMddHHmmssfff'
 $assemblyName = "KnowledgeFramework.BridgeAdapter.$stamp"
 
 if ([string]::IsNullOrWhiteSpace($ManagedPath)) { $ManagedPath = $env:RIMWORLD_MANAGED_ASSEMBLIES }
-if ([string]::IsNullOrWhiteSpace($PrimaryAssemblyPath)) { $PrimaryAssemblyPath = Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.dll' }
+if ([string]::IsNullOrWhiteSpace($PrimaryAssemblyPath)) { $PrimaryAssemblyPath = Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.dll' }
 if ([string]::IsNullOrWhiteSpace($ManagedPath) -or -not (Test-Path -LiteralPath $ManagedPath -PathType Container)) {
     $display = if ([string]::IsNullOrWhiteSpace($ManagedPath)) { '<missing>' } else { $ManagedPath }
     throw "adapterBuild=BLOCKED missing RimWorld Managed directory '$display'. Set -ManagedPath or RIMWORLD_MANAGED_PATH; proprietary assemblies are never downloaded."

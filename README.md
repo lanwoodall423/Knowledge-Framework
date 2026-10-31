@@ -1,13 +1,15 @@
 # Knowledge Framework
 
-Knowledge Framework is a RimWorld 1.6 gameplay dependency for mods that turn
+> RimWorld 1.7 / Waylith migration is in progress. The repository does not yet contain a verified 1.7 release DLL. Do not distribute the migration branch as a working mod. See [migration roadmap](ROADMAP_1_7_WAYLITH.md).
+
+Knowledge Framework is a RimWorld 1.7 gameplay dependency for mods that turn
 observations into personal knowledge, confidence, discovery stages, typed claims,
 expertise, documented colony knowledge, insights, and informed decisions. It is
 event-driven and does not require consumer mods to poll ticks.
 
 ## Player Installation
 
-Install the released Knowledge Framework folder as a normal RimWorld 1.6 mod and
+Install a **verified 1.7 build** of Knowledge Framework as a normal RimWorld 1.7 mod and
 place it before consumer mods that declare it as a dependency. Harmony is required
 and is loaded before the framework. The framework is useful by itself: with no
 consumer domains it registers no gameplay content, displays no consumer subjects,
@@ -53,7 +55,7 @@ not claim publication. The public integer API contract remains
 separately from the release version. See [API_COMPATIBILITY.md](API_COMPATIBILITY.md)
 and [PUBLIC_API.md](PUBLIC_API.md).
 
-The supported game version is RimWorld `1.6`. Existing V1/V2 consumers and saved
+The supported game version is RimWorld `1.7` only. Existing V1/V2 consumers and saved
 data remain supported; V3 is additive. Obsolete public members are retained for
 this release candidate.
 
