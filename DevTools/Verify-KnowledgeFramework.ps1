@@ -1,5 +1,5 @@
 param(
-    [string]$ManagedPath = $env:RIMWORLD_MANAGED_PATH,
+    [Alias('ManagedPath')] [string]$GameRoot = $env:RIMWORLD_GAME_ROOT,
     [string]$HarmonyPath = $env:RIMWORLD_HARMONY_PATH,
     [switch]$AllowBlockedIntegration
 )
@@ -29,7 +29,9 @@ function Block-Check {
 function Invoke-LocalCheck {
     param([string]$Name, [scriptblock]$Action)
     try {
+        $global:LASTEXITCODE = 0
         & $Action
+        if ($LASTEXITCODE -ne 0) { throw "Check returned exit code $LASTEXITCODE" }
         Pass-Check -Name $Name -Detail 'completed'
     }
     catch {
@@ -51,8 +53,6 @@ $requiredFiles = @(
     'README.md',
     'About/About.xml',
     'LoadFolders.xml',
-    '1.7/Assemblies/KnowledgeFramework.dll',
-    '1.7/Assemblies/KnowledgeFramework.build.json',
     '1.7/Defs/KnowledgeFramework_Defaults.xml',
     '1.7/Defs/MainButtonDefs.xml',
     '1.7/Languages/English/Keyed/KnowledgeFramework.xml',
@@ -120,9 +120,20 @@ try {
 }
 catch { Fail-Check -Name 'api-baseline' -Detail $_.Exception.Message }
 
-Invoke-LocalCheck -Name 'release-contract' -Action { & (Join-Path $PSScriptRoot 'Test-ReleaseContract.ps1') }
-Invoke-LocalCheck -Name 'bridge-artifact' -Action { & (Join-Path $PSScriptRoot 'Test-BridgeAdapter.ps1') }
-Invoke-LocalCheck -Name 'build-manifest' -Action { & (Join-Path $PSScriptRoot 'New-KnowledgeFrameworkBuildManifest.ps1') -Verify }
+$releaseDll = Join-Path $root '1.7/Assemblies/KnowledgeFramework.dll'
+$releaseManifest = Join-Path $root '1.7/Assemblies/KnowledgeFramework.build.json'
+if ((Test-Path -LiteralPath $releaseDll -PathType Leaf) -and (Test-Path -LiteralPath $releaseManifest -PathType Leaf)) {
+    Invoke-LocalCheck -Name 'release-contract' -Action { & (Join-Path $PSScriptRoot 'Test-ReleaseContract.ps1') }
+    Invoke-LocalCheck -Name 'build-manifest' -Action { & (Join-Path $PSScriptRoot 'New-KnowledgeFrameworkBuildManifest.ps1') -Verify }
+}
+elseif ((Test-Path -LiteralPath $releaseDll -PathType Leaf) -or (Test-Path -LiteralPath $releaseManifest -PathType Leaf)) {
+    Fail-Check -Name 'partial-release-artifacts' -Detail 'DLL and build manifest must be shipped as a verified pair'
+}
+else { Block-Check -Name 'release-artifacts' -Detail 'compile and verify a new RimWorld 1.7 DLL and build manifest' }
+$bridgeDir = Join-Path $root 'DevTools/BridgeAdapters'
+$bridgeManifests = if (Test-Path -LiteralPath $bridgeDir -PathType Container) { @(Get-ChildItem -LiteralPath $bridgeDir -File -Filter '*.manifest.json') } else { @() }
+if ($bridgeManifests.Count -eq 0) { Block-Check -Name 'bridge-artifact' -Detail 'new 1.7 bridge adapter not built' }
+else { Invoke-LocalCheck -Name 'bridge-artifact' -Action { & (Join-Path $PSScriptRoot 'Test-BridgeAdapter.ps1') } }
 Invoke-LocalCheck -Name 'documentation-links' -Action { & (Join-Path $PSScriptRoot 'Test-DocumentationLinks.ps1') }
 Invoke-LocalCheck -Name 'development-stress-contract' -Action { & (Join-Path $PSScriptRoot 'Test-DevelopmentStressContract.ps1') }
 
@@ -135,7 +146,7 @@ else { Fail-Check -Name 'configurable-dependencies' -Detail (($absoluteHints | F
 
 $assemblyOutput = Join-Path $root '1.7/Assemblies'
 $allowedAssemblyFiles = @('KnowledgeFramework.dll', 'KnowledgeFramework.build.json')
-$assemblyFiles = @(Get-ChildItem -LiteralPath $assemblyOutput -File)
+$assemblyFiles = if (Test-Path -LiteralPath $assemblyOutput -PathType Container) { @(Get-ChildItem -LiteralPath $assemblyOutput -File) } else { @() }
 $unexpectedAssemblyFiles = @($assemblyFiles | Where-Object { $allowedAssemblyFiles -notcontains $_.Name })
 if ($unexpectedAssemblyFiles.Count -eq 0) { Pass-Check -Name 'release-output-layout' -Detail (($assemblyFiles | ForEach-Object Name) -join ', ') }
 else { Fail-Check -Name 'release-output-layout' -Detail ('unexpected ' + (($unexpectedAssemblyFiles | ForEach-Object Name) -join ', ')) }
@@ -172,19 +183,35 @@ else {
     Fail-Check -Name 'transient-artifacts' -Detail ($details -join ', ')
 }
 
-if ([string]::IsNullOrWhiteSpace($ManagedPath)) { $ManagedPath = $env:RIMWORLD_MANAGED_ASSEMBLIES }
 if ([string]::IsNullOrWhiteSpace($HarmonyPath)) { $HarmonyPath = $env:RIMWORLD_HARMONY_ASSEMBLIES }
-if ([string]::IsNullOrWhiteSpace($ManagedPath) -or -not (Test-Path -LiteralPath $ManagedPath -PathType Container)) {
-    Block-Check -Name 'real-RimWorld-build' -Detail 'supply -ManagedPath or RIMWORLD_MANAGED_PATH'
+if ([string]::IsNullOrWhiteSpace($GameRoot) -or -not (Test-Path -LiteralPath $GameRoot -PathType Container)) {
+    Block-Check -Name 'real-RimWorld-build' -Detail 'supply -GameRoot (1.7 installation root) or RIMWORLD_GAME_ROOT'
 }
 else {
     try {
-        & (Join-Path $PSScriptRoot 'Build-KnowledgeFramework.ps1') -ManagedPath $ManagedPath -HarmonyPath $HarmonyPath
+        & (Join-Path $PSScriptRoot 'Build-KnowledgeFramework.ps1') -GameRoot $GameRoot -HarmonyPath $HarmonyPath
         if ($LASTEXITCODE -ne 0) { throw "build exited with code $LASTEXITCODE" }
         Pass-Check -Name 'real-RimWorld-build' -Detail 'completed with supplied local assemblies'
     }
     catch { Block-Check -Name 'real-RimWorld-build' -Detail $_.Exception.Message }
 }
+
+# Fail closed when obsolete binaries or target-frameworks are packaged.
+$obsoletePaths = @(& git -C $root ls-files | Where-Object { $_ -match '^(1\.6|Examples/ReferenceConsumer/1\.6)/' })
+if ($obsoletePaths.Count -gt 0) { Fail-Check -Name 'obsolete-1.6-content' -Detail ($obsoletePaths -join ', ') }
+else { Pass-Check -Name '1.7-only-packaging' -Detail 'no tracked 1.6 content' }
+foreach ($projectFile in $sourceProjects) {
+    $raw = Get-Content -LiteralPath $projectFile.FullName -Raw
+    if ($raw -notmatch '<TargetFramework>net10\.0</TargetFramework>' -or $raw -match 'UnityEngine\.[A-Za-z]+Module') {
+        Fail-Check -Name 'net10-waylith-contract' -Detail $projectFile.FullName
+    }
+}
+$loader = [xml](Get-Content -LiteralPath (Join-Path $root 'LoadFolders.xml') -Raw)
+$about = [xml](Get-Content -LiteralPath (Join-Path $root 'About/About.xml') -Raw)
+if (@($about.ModMetaData.supportedVersions.li).Count -ne 1 -or @($about.ModMetaData.supportedVersions.li)[0] -ne '1.7' -or
+    $null -eq $loader.loadFolders.'v1.7' -or $null -ne $loader.loadFolders.'v1.6') {
+    Fail-Check -Name '1.7-only-metadata' -Detail 'About and LoadFolders must specify only 1.7'
+} else { Pass-Check -Name '1.7-only-metadata' -Detail 'version and load folder' }
 
 if ($failures.Count -gt 0) {
     Write-Output ('verification=FAIL failures={0} blocked={1}' -f $failures.Count, $blocked.Count)
@@ -194,5 +221,5 @@ if ($blocked.Count -gt 0 -and -not $AllowBlockedIntegration) {
     Write-Output ('verification=BLOCKED failures=0 blocked={0}; rerun with -AllowBlockedIntegration for static-only validation' -f $blocked.Count)
     exit 2
 }
-Write-Output ('verification=PASS failures=0 blocked={0}' -f $blocked.Count)
+Write-Output ('verification={0} failures=0 blocked={1}' -f $(if ($blocked.Count -eq 0) { 'PASS' } else { 'STATIC_PASS_UNRELEASED' }), $blocked.Count)
 exit 0

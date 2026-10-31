@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $expectedId = 'KnowledgeFramework'
 $expectedPackage = 'lan.knowledgeframework'
 $directory = [IO.Path]::GetFullPath((Join-Path $ModRoot 'DevTools/BridgeAdapters'))
+if (-not (Test-Path -LiteralPath $directory -PathType Container)) { throw '1.7 bridge artifact directory missing; build the adapter before release.' }
 $manifests = @(Get-ChildItem -LiteralPath $directory -Filter '*.manifest.json' -File)
 if ($manifests.Count -ne 1) { throw "Expected one $expectedId manifest, found $($manifests.Count)." }
 $manifest = Get-Content -LiteralPath $manifests[0].FullName -Raw | ConvertFrom-Json
