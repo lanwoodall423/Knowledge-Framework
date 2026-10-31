@@ -120,6 +120,20 @@ try {
 }
 catch { Fail-Check -Name 'api-baseline' -Detail $_.Exception.Message }
 
+# Build before validating artifacts, or report unavailable dependencies without producing a false PASS.
+if ([string]::IsNullOrWhiteSpace($HarmonyPath)) { $HarmonyPath = $env:RIMWORLD_HARMONY_ASSEMBLIES }
+if ([string]::IsNullOrWhiteSpace($GameRoot) -or -not (Test-Path -LiteralPath $GameRoot -PathType Container)) {
+    Block-Check -Name 'real-RimWorld-build' -Detail 'supply -GameRoot (1.7 installation root) or RIMWORLD_GAME_ROOT'
+}
+else {
+    try {
+        & (Join-Path $PSScriptRoot 'Build-KnowledgeFramework.ps1') -GameRoot $GameRoot -HarmonyPath $HarmonyPath
+        if ($LASTEXITCODE -ne 0) { throw "build exited with code $LASTEXITCODE" }
+        Pass-Check -Name 'real-RimWorld-build' -Detail 'completed with supplied local assemblies'
+    }
+    catch { Block-Check -Name 'real-RimWorld-build' -Detail $_.Exception.Message }
+}
+
 $releaseDll = Join-Path $root '1.7/Assemblies/KnowledgeFramework.dll'
 $releaseManifest = Join-Path $root '1.7/Assemblies/KnowledgeFramework.build.json'
 if ((Test-Path -LiteralPath $releaseDll -PathType Leaf) -and (Test-Path -LiteralPath $releaseManifest -PathType Leaf)) {
@@ -147,7 +161,7 @@ else { Fail-Check -Name 'configurable-dependencies' -Detail (($absoluteHints | F
 
 $assemblyOutput = Join-Path $root '1.7/Assemblies'
 $allowedAssemblyFiles = @('KnowledgeFramework.dll', 'KnowledgeFramework.build.json')
-$assemblyFiles = if (Test-Path -LiteralPath $assemblyOutput -PathType Container) { @(Get-ChildItem -LiteralPath $assemblyOutput -File) } else { @() }
+$assemblyFiles = if (Test-Path -LiteralPath $assemblyOutput -PathType Container) { @(Get-ChildItem -LiteralPath $assemblyOutput -File) } else { Block-Check -Name 'release-output-directory' -Detail '1.7/Assemblies not built'; @() }
 $unexpectedAssemblyFiles = @($assemblyFiles | Where-Object { $allowedAssemblyFiles -notcontains $_.Name })
 if ($unexpectedAssemblyFiles.Count -eq 0) { Pass-Check -Name 'release-output-layout' -Detail (($assemblyFiles | ForEach-Object Name) -join ', ') }
 else { Fail-Check -Name 'release-output-layout' -Detail ('unexpected ' + (($unexpectedAssemblyFiles | ForEach-Object Name) -join ', ')) }
@@ -182,19 +196,6 @@ if ($trackedTransient.Count -eq 0 -and $packageTransient.Count -eq 0) {
 else {
     $details = @($trackedTransient) + @($packageTransient)
     Fail-Check -Name 'transient-artifacts' -Detail ($details -join ', ')
-}
-
-if ([string]::IsNullOrWhiteSpace($HarmonyPath)) { $HarmonyPath = $env:RIMWORLD_HARMONY_ASSEMBLIES }
-if ([string]::IsNullOrWhiteSpace($GameRoot) -or -not (Test-Path -LiteralPath $GameRoot -PathType Container)) {
-    Block-Check -Name 'real-RimWorld-build' -Detail 'supply -GameRoot (1.7 installation root) or RIMWORLD_GAME_ROOT'
-}
-else {
-    try {
-        & (Join-Path $PSScriptRoot 'Build-KnowledgeFramework.ps1') -GameRoot $GameRoot -HarmonyPath $HarmonyPath
-        if ($LASTEXITCODE -ne 0) { throw "build exited with code $LASTEXITCODE" }
-        Pass-Check -Name 'real-RimWorld-build' -Detail 'completed with supplied local assemblies'
-    }
-    catch { Block-Check -Name 'real-RimWorld-build' -Detail $_.Exception.Message }
 }
 
 # Fail closed when obsolete binaries or target-frameworks are packaged.
