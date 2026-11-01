@@ -125,13 +125,40 @@ project-owned recipe in `.rimdev/recipes/knowledge-framework-release-runtime.jso
 The behavioral action writes `Config/KnowledgeFramework_Verification.txt`; the stress action writes
 `Config/KnowledgeFramework_Stress.txt`. The debug actions must **throw** on any behavioral, isolation, stress or unavailable
 result, so RimTest can distinguish successful invocation from successful assertions.
-The V2/V3 action also requires a writable verification report. Inspect and archive
-those reports as independent corroboration; a missing report, a blocked stress
+The V2/V3 **and stress** actions require writable evidence reports; their
+debug actions throw when those reports cannot be persisted. Inspect and archive
+both reports as independent corroboration; a missing report, a blocked stress
 precondition or any recorded failure is **not** a release PASS. Stress reports with
 an unavailable map or fewer than 20 live pawns are `BLOCKED/UNAVAILABLE`, not a synthetic pass.
 
 The release catalog entry anchors freshness to the current Release assembly. The development smoke
 entry remains the cheap build/load/Quicktest check and does not run this suite.
+
+## ProjectNexus managed 1.7 checks (not yet host-authorized)
+
+The 1.7 development branch declares two **fixed** ProjectNexus checks:
+`validation.rimtest` invokes `rimtest dev-check --json` and
+`validation.rimtest-release` invokes `rimtest suite run release --json`.
+Both run from the exact managed source workspace; each has one attempt,
+serial execution and no prior result reuse. **Declarations do not authorize**
+pull-request code execution, native-tool import, game launch, installation
+or persistent PATH changes. Neither check is currently trusted for execution
+in the 1.7 PR workspace.
+
+Before running either check, ProjectNexus #173 must provide independently
+qualified and child-only native RimTest resolution, exact local trust and an
+isolated RimWorld 1.7 game-run authorization. The PR admission boundary
+must remain effective despite the intentional deletion of 1.6 artifacts.
+A game-load smoke alone never qualifies behavioral or persistence claims.
+
+The release runner must capture matching **fresh** source/assembly, game,
+save, runner and execution identifiers along with both
+`KnowledgeFramework_Verification.txt` and `KnowledgeFramework_Stress.txt`.
+The in-game V2/V3 and bounded-stress actions now reject failures **and missing
+report files** rather than merely logging them. A command exit, older file,
+log string or reference-only compilation is not release evidence.
+Failures, blocked prerequisites, unverifiable cleanup and absence of
+per-run provenance must remain FAIL/BLOCKED, never PASS.
 
 ## Bounded Stress Action
 
