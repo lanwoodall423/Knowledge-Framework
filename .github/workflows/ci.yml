@@ -2,7 +2,9 @@ name: legal-checks
 
 on:
   push:
+    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -41,6 +43,12 @@ jobs:
       - name: Compile reference consumer against the 1.7 framework
         shell: bash
         run: dotnet build DevTools/RefCompile/ReferenceConsumer.RefCompile.csproj -c Release --nologo
+      - name: Compile optional bridge adapter against 1.7 reference assemblies
+        shell: bash
+        run: dotnet build DevTools/RefCompile/KnowledgeFrameworkBridgeAdapter.RefCompile.csproj -c Release --nologo
+      - name: Compile behavioral harness against 1.7 reference assemblies
+        shell: bash
+        run: dotnet build DevTools/RefCompile/KnowledgeFrameworkBehavioralHarness.RefCompile.csproj -c Release --nologo
       - name: Verify clean diff formatting
         shell: bash
         run: git diff --check

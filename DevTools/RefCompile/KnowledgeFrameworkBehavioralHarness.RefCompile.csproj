@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compiles real source against signatures only; never execute or distribute this assembly. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KnowledgeFrameworkBehavioralHarness.RefCompile</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <OutputPath>$(MSBuildThisFileDirectory)../../.artifacts/refcompile/knowledgeframeworkbehavioralharness/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="KnowledgeFramework.RefCompile.csproj" />
+    <Compile Include="../BehavioralHarness/Program.cs" />
+    <Compile Include="../BehavioralHarness/PublicV3Audit.cs" />
+    <EmbeddedResource Include="../PublicApiBaseline.txt" Link="PublicApiBaseline.txt" />
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.7.4990-unstable" PrivateAssets="all" />
+    <PackageReference Include="Lib.Harmony" Version="3.0.0-rc.4" PrivateAssets="all" />
+  </ItemGroup>
+</Project>
