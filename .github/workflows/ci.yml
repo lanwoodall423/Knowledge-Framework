@@ -49,6 +49,31 @@ jobs:
       - name: Compile behavioral harness against 1.7 reference assemblies
         shell: bash
         run: dotnet build DevTools/RefCompile/KnowledgeFrameworkBehavioralHarness.RefCompile.csproj -c Release --nologo
+      - name: Build clearly labeled 1.7 test candidate (NOT a release)
+        if: github.event_name == 'pull_request'
+        shell: bash
+        run: |
+          OUTPUT="$GITHUB_WORKSPACE/.artifacts/ci-game-candidate"
+          dotnet build DevTools/RefCompile/KnowledgeFramework.RefCompile.csproj -c Release --nologo -p:AssemblyName=KnowledgeFramework "-p:OutputPath=$OUTPUT/"
+          test -f "$OUTPUT/KnowledgeFramework.dll"
+          ROOT="$GITHUB_WORKSPACE/.artifacts/package/KnowledgeFramework"
+          mkdir -p "$ROOT/1.7/Assemblies"
+          cp -R About "$ROOT/"
+          cp LoadFolders.xml LICENSE "$ROOT/"
+          cp -R 1.7/Defs "$ROOT/1.7/"
+          cp -R 1.7/Languages "$ROOT/1.7/"
+          cp "$OUTPUT/KnowledgeFramework.dll" "$ROOT/1.7/Assemblies/"
+          printf "UNVERIFIED RIMWORLD 1.7 TEST CANDIDATE\\nBuilt from PR source against RimRef 1.7.4990-unstable and Harmony 3.0.0-rc.4.\\nThis is NOT a release. Run only in a disposable 1.7 game/mod setup.\\nRuntime loading, Harmony patching, saved-data behavior and DLC integration have NOT been tested.\\nSource commit: %s\\n" "$GITHUB_SHA" > "$ROOT/UNVERIFIED_TEST_CANDIDATE.txt"
+          cd "$GITHUB_WORKSPACE/.artifacts/package"
+          zip -qr "$GITHUB_WORKSPACE/.artifacts/KnowledgeFramework-1.7-UNVERIFIED.zip" KnowledgeFramework
+      - name: Upload short-lived unverified test candidate
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KnowledgeFramework-1.7-UNVERIFIED
+          path: .artifacts/KnowledgeFramework-1.7-UNVERIFIED.zip
+          retention-days: 3
+          if-no-files-found: error
       - name: Verify clean diff formatting
         shell: bash
         run: git diff --check

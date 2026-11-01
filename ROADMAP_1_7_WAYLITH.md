@@ -48,6 +48,10 @@
 ## Reference-compilation milestone (31 October 2026)
 
 - [x] Add isolated .NET 10 reference-only CI compilation against Ludeon-permitted RimRef `1.7.4990-unstable` and Harmony `3.0.0-rc.4`. Initial framework and reference-consumer compilation PASSED on GitHub Actions; no game binaries were used or distributed.
-- [ ] Compile the optional bridge adapter and behavioral harness against the same reference baseline (CI coverage added; await confirmed result).
+- [x] Compile the optional bridge adapter and behavioral harness against the same reference baseline. All four components passed in GitHub Actions run 41254970698.
 - [ ] Compile release assemblies against locally installed 1.7 game and Harmony 3, validate actual Harmony patches and execute in-game RimTest. **Reference-only compilation does not clear this gate.**
 - CI only runs `push` checks on `main` and PR checks on other branches, avoiding duplicate Actions minutes.
+
+## Test-candidate packaging
+
+A short-lived CI artifact (if the PR job succeeds) contains a compiled 1.7-only **unverified test mod** with its Defs, localization and metadata. It contains none of the game/Harmony DLLs. This is an integration-testing convenience, **not** a Workshop release or a replacement for a game-root/Harmony 3 rebuild and RimTest qualification. Never use it as an established-good mod on a valuable save.
