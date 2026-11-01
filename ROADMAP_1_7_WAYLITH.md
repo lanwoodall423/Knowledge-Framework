@@ -55,3 +55,9 @@
 ## Test-candidate packaging
 
 A short-lived CI artifact (if the PR job succeeds) contains a compiled 1.7-only **unverified test mod** with its Defs, localization and metadata. It contains none of the game/Harmony DLLs. This is an integration-testing convenience, **not** a Workshop release or a replacement for a game-root/Harmony 3 rebuild and RimTest qualification. Never use it as an established-good mod on a valuable save.
+
+## Automated game-result gating improvement
+
+- [x] Make V2/V3 behavioral debug action throw if an assertion fails, is unavailable, or its verification report cannot be written. The release recipe previously treated an executed debug action as success without inspecting its failure log; consumers and stress already threw on failures.
+- [x] Add a static regression guard to 1.7 contract validation for behavioral, two-consumer and stress debug-action failure propagation.
+- [ ] Prove the full RimTest debug-action failure contract in a disposable Waylith guest; synthetic static/compile tests do not establish actual game API error propagation.

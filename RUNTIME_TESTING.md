@@ -123,8 +123,11 @@ project-owned recipe in `.rimdev/recipes/knowledge-framework-release-runtime.jso
 5. Runs the existing bounded V3 stress action.
 
 The behavioral action writes `Config/KnowledgeFramework_Verification.txt`; the stress action writes
-`Config/KnowledgeFramework_Stress.txt`. A successful debug-action invocation is not a behavioral
-PASS by itself: inspect both reports. Any report failure is a release failure. Stress reports with
+`Config/KnowledgeFramework_Stress.txt`. The debug actions must **throw** on any behavioral, isolation, stress or unavailable
+result, so RimTest can distinguish successful invocation from successful assertions.
+The V2/V3 action also requires a writable verification report. Inspect and archive
+those reports as independent corroboration; a missing report, a blocked stress
+precondition or any recorded failure is **not** a release PASS. Stress reports with
 an unavailable map or fewer than 20 live pawns are `BLOCKED/UNAVAILABLE`, not a synthetic pass.
 
 The release catalog entry anchors freshness to the current Release assembly. The development smoke

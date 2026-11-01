@@ -417,6 +417,13 @@ namespace KnowledgeFramework
                 Log.Warning("[Knowledge Framework] Behavioral verification failures: " + string.Join("; ", result.failures));
             Messages.Message(result.Success ? "KnowledgeFramework_VerificationPassed".Translate() : "KnowledgeFramework_VerificationFailed".Translate(),
                 result.Success ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+            // The RimTest recipe checks the debug-action execution result, not just this log.
+            // Never return successfully on failed or unavailable behavioral assertions.
+            if (!result.Success || reportPath == "unavailable")
+                throw new InvalidOperationException("Knowledge Framework behavioral verification " +
+                    (!result.Success ? "FAILED" : "report unavailable") +
+                    ": failures=" + string.Join("; ", result.failures) + "; unavailable=" +
+                    result.unavailable + "; report=" + reportPath);
         }
 
         private static string WriteReport(KnowledgeVerificationResult result)

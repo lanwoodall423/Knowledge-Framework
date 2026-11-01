@@ -92,6 +92,18 @@ function target() {
   const stack = JSON.parse(read(".rimdev/stack.json"));
   assert("RimTest deployment targets 1.7", stack.deploymentTarget === "1.7/Assemblies/KnowledgeFramework.dll");
   assert("RimTest package excludes old runtime", JSON.stringify(stack.runtimePackage.include).includes("1.7/**") && !JSON.stringify(stack.runtimePackage.include).includes("1.*/**"));
+  // The in-game recipe treats a successful debug action as evidence. Ensure
+  // behavioral failures cannot be downgraded to a merely logged warning.
+  const verification = read("Source/KnowledgeVerificationV2.cs");
+  const debugAction = verification.split('private static void RunFromDebugMenu()')[1]?.split('private static string WriteReport(')[0] || "";
+  assert("behavioral debug action rejects failures", debugAction.includes('if (!result.Success || reportPath == "unavailable")') &&
+    debugAction.includes("throw new InvalidOperationException("));
+  const consumerIsolation = read("Source/Development/KnowledgeFrameworkReleaseConsumerIsolation.cs");
+  assert("two-consumer action rejects failures", consumerIsolation.includes('if (failure != null)') &&
+    consumerIsolation.includes('throw new InvalidOperationException('));
+  const stress = read("Source/Development/KnowledgeFrameworkStressVerification.cs");
+  assert("bounded stress action rejects failures", stress.includes('throw new InvalidOperationException(') &&
+    stress.includes('result.Status'));
   const builder = read("DevTools/Build-KnowledgeFramework.ps1");
   for (const marker of ["UnityStubs.dll", "Waylith.dll", "Harmony 3", "RimWorldTargetVersion -ne '1.7'"])
     assert("build guard: " + marker, builder.includes(marker));
