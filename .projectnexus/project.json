@@ -81,6 +81,58 @@
           "mode": "serial",
           "exclusiveResources": []
         }
+      },
+      {
+        "capabilityId": "validation.rimtest",
+        "title": "Knowledge Framework Waylith 1.7 isolated game-load smoke",
+        "taskCheckName": "Knowledge Framework 1.7 game-load smoke",
+        "command": {
+          "executable": "rimtest",
+          "args": [
+            "dev-check",
+            "--json"
+          ],
+          "cwd": "."
+        },
+        "tier": "release-confidence",
+        "requirements": {
+          "platform": "win32"
+        },
+        "maxAttempts": 1,
+        "reuse": {
+          "mode": "none"
+        },
+        "concurrency": {
+          "mode": "serial",
+          "exclusiveResources": []
+        }
+      },
+      {
+        "capabilityId": "validation.rimtest-release",
+        "title": "Knowledge Framework Waylith 1.7 behavioral/save/reload/stress suite",
+        "taskCheckName": "Knowledge Framework 1.7 runtime release qualification",
+        "command": {
+          "executable": "rimtest",
+          "args": [
+            "suite",
+            "run",
+            "release",
+            "--json"
+          ],
+          "cwd": "."
+        },
+        "tier": "release-confidence",
+        "requirements": {
+          "platform": "win32"
+        },
+        "maxAttempts": 1,
+        "reuse": {
+          "mode": "none"
+        },
+        "concurrency": {
+          "mode": "serial",
+          "exclusiveResources": []
+        }
       }
     ],
     "transforms": [],
