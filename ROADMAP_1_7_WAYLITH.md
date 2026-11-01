@@ -61,3 +61,11 @@ A short-lived CI artifact (if the PR job succeeds) contains a compiled 1.7-only 
 - [x] Make V2/V3 behavioral debug action throw if an assertion fails, is unavailable, or its verification report cannot be written. The release recipe previously treated an executed debug action as success without inspecting its failure log; consumers and stress already threw on failures.
 - [x] Add a static regression guard to 1.7 contract validation for behavioral, two-consumer and stress debug-action failure propagation.
 - [ ] Prove the full RimTest debug-action failure contract in a disposable Waylith guest; synthetic static/compile tests do not establish actual game API error propagation.
+
+## ProjectNexus managed exact runner declarations (2026-10-31; source-only)
+
+- [x] Declare fixed `validation.rimtest` 1.7 smoke and `validation.rimtest-release` 1.7 behavioral/save/reload/stress suite in the migration branch's ProjectNexus manifest. Both use serial, single-attempt, no-result-reuse execution and must bind to an exact source workspace when separately trusted.
+- [x] Block false PASS when stress assertions pass but writing `KnowledgeFramework_Stress.txt` fails; include machine-readable `status`, `failure-count` and `unavailable-count` in the behavioral report. Keep manual UI verification separate.
+- [ ] Shared [ProjectNexus #173](https://github.com/lanwoodall423/Project-Nexus/issues/173): activate **one** scoped, independently qualified native RimTest provider **after its NatureTiles pilot**; do not duplicate importers or bypass the protected #178 recovery.
+- [ ] Obtain exact local runner/check trust, 1.7 guest/save isolation and verified source/toolchain binding; run these two checks and preserve their **fresh** per-run evidence.
+- [ ] Verify the actual 1.7 saved-game reports and cleanup on matched game/save/runner identities; no source-only or simulated PASS counts as runtime readiness.
