@@ -433,6 +433,10 @@ namespace KnowledgeFramework
             {
                 StringBuilder report = new StringBuilder();
                 report.AppendLine("Knowledge Framework behavioral verification");
+                report.AppendLine("report-kind=behavioral-v2-v3");
+                report.AppendLine("status=" + (result.Success ? "PASS" : "FAIL"));
+                report.AppendLine("failure-count=" + result.failures.Count);
+                report.AppendLine("unavailable-count=" + result.unavailable);
                 report.AppendLine("pure passed=" + result.purePassed + " failed=" + result.pureFailed + " skipped=" + result.skipped + " unavailable=0");
                 report.AppendLine("game-state passed=" + result.gamePassed + " failed=" + result.gameFailed + " skipped=0 unavailable=" + result.unavailable);
                 report.AppendLine("manual-ui passed=0 failed=0 skipped=0 unavailable=1");
