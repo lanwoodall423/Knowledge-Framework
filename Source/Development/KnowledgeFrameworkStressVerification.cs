@@ -82,7 +82,9 @@ namespace KnowledgeFramework.Development
         {
             StressResult result = Run();
             string reportPath = WriteReport(result);
-            Log.Message("[Knowledge Framework] V3 stress validation " + result.Status +
+            // A completed stress run without durable evidence is not a release PASS.
+            string effectiveStatus = reportPath == "unavailable" ? "BLOCKED/UNAVAILABLE" : result.Status;
+            Log.Message("[Knowledge Framework] V3 stress validation " + effectiveStatus +
                 ": subjects=" + result.subjectCount + " pawns=" + result.activePawnCount +
                 " transactions=" + result.transactions + " claims=" + result.claimMeasurements +
                 " rebuilds=" + result.rebuilds + " bytes=" + result.persistentBytes +
@@ -91,13 +93,14 @@ namespace KnowledgeFramework.Development
                 Log.Warning("[Knowledge Framework] V3 stress failures: " + string.Join("; ", result.failures));
             if (result.unavailableReasons.Count > 0)
                 Log.Warning("[Knowledge Framework] V3 stress unavailable checks: " + string.Join("; ", result.unavailableReasons));
-            Messages.Message(result.Status == "PASS" ? "KnowledgeFramework_VerificationPassed".Translate() :
+            Messages.Message(effectiveStatus == "PASS" ? "KnowledgeFramework_VerificationPassed".Translate() :
                 "KnowledgeFramework_VerificationFailed".Translate(),
-                result.Status == "PASS" ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
-            if (result.Status != "PASS")
-                throw new InvalidOperationException("Knowledge Framework V3 stress validation " + result.Status +
+                effectiveStatus == "PASS" ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+            if (effectiveStatus != "PASS")
+                throw new InvalidOperationException("Knowledge Framework V3 stress validation " + effectiveStatus +
                     (result.failures.Count > 0 ? ": " + string.Join("; ", result.failures) :
-                    result.unavailableReasons.Count > 0 ? ": " + string.Join("; ", result.unavailableReasons) : string.Empty));
+                    result.unavailableReasons.Count > 0 ? ": " + string.Join("; ", result.unavailableReasons) :
+                    reportPath == "unavailable" ? ": report unavailable" : string.Empty));
         }
 
         internal static string ReportPath => Path.Combine(GenFilePaths.ConfigFolderPath, "KnowledgeFramework_Stress.txt");
