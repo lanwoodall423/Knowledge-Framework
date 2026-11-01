@@ -1,0 +1,9 @@
+<Project>
+  <!-- Keep each compile-only project isolated. Sharing obj/project.assets.json caused
+       a consumer restore to overwrite the framework's Harmony package resolution. -->
+  <Import Project="../../Directory.Build.props" />
+  <PropertyGroup>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory).artifacts/obj/$(MSBuildProjectName)/</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>
