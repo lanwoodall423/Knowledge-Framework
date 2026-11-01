@@ -102,8 +102,12 @@ function target() {
   assert("two-consumer action rejects failures", consumerIsolation.includes('if (failure != null)') &&
     consumerIsolation.includes('throw new InvalidOperationException('));
   const stress = read("Source/Development/KnowledgeFrameworkStressVerification.cs");
-  assert("bounded stress action rejects failures", stress.includes('throw new InvalidOperationException(') &&
-    stress.includes('result.Status'));
+  assert("bounded stress action rejects failures and missing reports", stress.includes('throw new InvalidOperationException(') &&
+    stress.includes('string effectiveStatus = reportPath == "unavailable" ? "BLOCKED/UNAVAILABLE" : result.Status;') &&
+    stress.includes('if (effectiveStatus != "PASS")'));
+  assert("behavioral report has machine-readable disposition", verification.includes('report.AppendLine("status=" + (result.Success ? "PASS" : "FAIL"));') &&
+    verification.includes('report.AppendLine("failure-count=" + result.failures.Count);'));
+  assert("stress report has machine-readable disposition", stress.includes('report.AppendLine("status=" + result.Status);'));
   const builder = read("DevTools/Build-KnowledgeFramework.ps1");
   for (const marker of ["UnityStubs.dll", "Waylith.dll", "Harmony 3", "RimWorldTargetVersion -ne '1.7'"])
     assert("build guard: " + marker, builder.includes(marker));
@@ -137,9 +141,31 @@ function repository() {
   consumer();
   const pn = JSON.parse(read(".projectnexus/project.json"));
   assert("ProjectNexus project identity", pn.projectId === "knowledgeframework");
-  for (const check of pn.capabilities.checks) {
-    assert("bounded ProjectNexus direct runner " + check.capabilityId, check.command.executable === "node" &&
-      Array.isArray(check.command.args) && check.command.args[0] === "DevTools/validate-rimworld17.mjs");
+  const checks = new Map(pn.capabilities.checks.map((check) => [check.capabilityId, check]));
+  assert("only five expected ProjectNexus checks declared", checks.size === 5 && pn.capabilities.checks.length === 5);
+  for (const [id, mode] of [
+    ["validation.rimworld17-contract", "target"],
+    ["validation.static", "repository"],
+    ["validation.reference-consumer", "consumer"]
+  ]) {
+    const check = checks.get(id);
+    assert("bounded ProjectNexus static runner " + id, check?.command.executable === "node" &&
+      JSON.stringify(check.command.args) === JSON.stringify(["DevTools/validate-rimworld17.mjs", "--check", mode]) &&
+      check.command.cwd === ".");
+  }
+  for (const [id, args] of [
+    ["validation.rimtest", ["dev-check", "--json"]],
+    ["validation.rimtest-release", ["suite", "run", "release", "--json"]]
+  ]) {
+    const check = checks.get(id);
+    assert("fixed ProjectNexus 1.7 RimTest command " + id,
+      check?.command.executable === "rimtest" &&
+      JSON.stringify(check.command.args) === JSON.stringify(args) &&
+      check.command.cwd === "." &&
+      check.maxAttempts === 1 &&
+      check.reuse?.mode === "none" &&
+      check.requirements?.platform === "win32" &&
+      check.concurrency?.mode === "serial");
   }
   const ci = read(".github/workflows/ci.yml");
   assert("CI validates 1.7 static contract", ci.includes("DevTools/Test-RimWorld17Contract.ps1"));
