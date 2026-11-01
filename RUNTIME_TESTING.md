@@ -11,7 +11,7 @@ pwsh ./DevTools/Test-DevelopmentStressContract.ps1
 
 ## New-Game Scenario
 
-1. Start a new RimWorld 1.6 game with Harmony, Knowledge Framework, and one test
+1. Start a new RimWorld 1.7 game with Harmony, Knowledge Framework, and one test
    consumer enabled.
 2. Confirm the consumer domain, subjects, facets, stages, and localization appear.
 3. Run the framework behavioral debug action and the bounded V3 stress validation
@@ -49,26 +49,26 @@ state without downloading files. Do not treat this as a successful runtime test.
 
 ## Exact Local Commands
 
-Use only paths to assemblies already installed by the local RimWorld copy. These
+Use only paths to assemblies already installed by the local RimWorld copy. The 1.7 game assemblies live at the installation root, **not** under the former Unity `Managed` folder. These
 commands build the framework and run the non-game behavioral checks; they do not
 start RimWorld or copy proprietary assemblies into this repository.
 
 Windows PowerShell:
 
 ```powershell
-$managed = 'C:\Path\To\RimWorldWin64_Data\Managed'
+$gameRoot = 'C:\Path\To\RimWorld'
 $harmony = 'C:\Path\To\0Harmony.dll'
-& .\DevTools\Build-KnowledgeFramework.ps1 -ManagedPath $managed -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.6'
-& .\DevTools\Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -ManagedPath $managed -HarmonyPath $harmony -AssemblyPath (Resolve-Path '.\1.6\Assemblies\KnowledgeFramework.dll').Path
+& .\DevTools\Build-KnowledgeFramework.ps1 -GameRoot $gameRoot -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.7'
+& .\DevTools\Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -GameRoot $gameRoot -HarmonyPath $harmony -AssemblyPath (Resolve-Path '.\1.7/Assemblies\KnowledgeFramework.dll').Path
 ```
 
 PowerShell 7 on Windows or Linux:
 
 ```powershell
-$managed = '/path/to/RimWorldWin64_Data/Managed'
+$gameRoot = '/path/to/RimWorld'
 $harmony = '/path/to/0Harmony.dll'
-pwsh ./DevTools/Build-KnowledgeFramework.ps1 -ManagedPath $managed -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.6'
-pwsh ./DevTools/Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -ManagedPath $managed -HarmonyPath $harmony -AssemblyPath (Resolve-Path './1.6/Assemblies/KnowledgeFramework.dll').Path
+pwsh ./DevTools/Build-KnowledgeFramework.ps1 -GameRoot $gameRoot -HarmonyAssemblyPath $harmony -RimWorldTargetVersion '1.7'
+pwsh ./DevTools/Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild -GameRoot $gameRoot -HarmonyPath $harmony -AssemblyPath (Resolve-Path './1.7/Assemblies/KnowledgeFramework.dll').Path
 ```
 
 The final stress step is deliberately in-game: start or load the disposable test
@@ -123,12 +123,42 @@ project-owned recipe in `.rimdev/recipes/knowledge-framework-release-runtime.jso
 5. Runs the existing bounded V3 stress action.
 
 The behavioral action writes `Config/KnowledgeFramework_Verification.txt`; the stress action writes
-`Config/KnowledgeFramework_Stress.txt`. A successful debug-action invocation is not a behavioral
-PASS by itself: inspect both reports. Any report failure is a release failure. Stress reports with
+`Config/KnowledgeFramework_Stress.txt`. The debug actions must **throw** on any behavioral, isolation, stress or unavailable
+result, so RimTest can distinguish successful invocation from successful assertions.
+The V2/V3 **and stress** actions require writable evidence reports; their
+debug actions throw when those reports cannot be persisted. Inspect and archive
+both reports as independent corroboration; a missing report, a blocked stress
+precondition or any recorded failure is **not** a release PASS. Stress reports with
 an unavailable map or fewer than 20 live pawns are `BLOCKED/UNAVAILABLE`, not a synthetic pass.
 
 The release catalog entry anchors freshness to the current Release assembly. The development smoke
 entry remains the cheap build/load/Quicktest check and does not run this suite.
+
+## ProjectNexus managed 1.7 checks (not yet host-authorized)
+
+The 1.7 development branch declares two **fixed** ProjectNexus checks:
+`validation.rimtest` invokes `rimtest dev-check --json` and
+`validation.rimtest-release` invokes `rimtest suite run release --json`.
+Both run from the exact managed source workspace; each has one attempt,
+serial execution and no prior result reuse. **Declarations do not authorize**
+pull-request code execution, native-tool import, game launch, installation
+or persistent PATH changes. Neither check is currently trusted for execution
+in the 1.7 PR workspace.
+
+Before running either check, ProjectNexus #173 must provide independently
+qualified and child-only native RimTest resolution, exact local trust and an
+isolated RimWorld 1.7 game-run authorization. The PR admission boundary
+must remain effective despite the intentional deletion of 1.6 artifacts.
+A game-load smoke alone never qualifies behavioral or persistence claims.
+
+The release runner must capture matching **fresh** source/assembly, game,
+save, runner and execution identifiers along with both
+`KnowledgeFramework_Verification.txt` and `KnowledgeFramework_Stress.txt`.
+The in-game V2/V3 and bounded-stress actions now reject failures **and missing
+report files** rather than merely logging them. A command exit, older file,
+log string or reference-only compilation is not release evidence.
+Failures, blocked prerequisites, unverifiable cleanup and absence of
+per-run provenance must remain FAIL/BLOCKED, never PASS.
 
 ## Bounded Stress Action
 

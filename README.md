@@ -1,20 +1,21 @@
 # Knowledge Framework
 
-Knowledge Framework is a RimWorld 1.6 gameplay dependency for mods that turn
+> RimWorld 1.7 / Waylith migration is in progress. The repository does not yet contain a verified 1.7 release DLL. Do not distribute the migration branch as a working mod. See [migration roadmap](ROADMAP_1_7_WAYLITH.md).
+
+Knowledge Framework is a RimWorld 1.7 gameplay dependency for mods that turn
 observations into personal knowledge, confidence, discovery stages, typed claims,
 expertise, documented colony knowledge, insights, and informed decisions. It is
 event-driven and does not require consumer mods to poll ticks.
 
 ## Player Installation
 
-Install the released Knowledge Framework folder as a normal RimWorld 1.6 mod and
+Install a **verified 1.7 build** of Knowledge Framework as a normal RimWorld 1.7 mod and
 place it before consumer mods that declare it as a dependency. Harmony is required
 and is loaded before the framework. The framework is useful by itself: with no
 consumer domains it registers no gameplay content, displays no consumer subjects,
 and remains idle apart from its normal startup registration.
 
-The framework does not include RimWorld, Unity, or Harmony assemblies. Those files
-are supplied by the game and the Harmony mod.
+The framework does not include RimWorld, Waylith, UnityStubs or Harmony assemblies. All game reference files are supplied by the installed game; Harmony 3 is supplied by the separate mod.
 
 ## Mod-Author Dependency
 
@@ -53,7 +54,7 @@ not claim publication. The public integer API contract remains
 separately from the release version. See [API_COMPATIBILITY.md](API_COMPATIBILITY.md)
 and [PUBLIC_API.md](PUBLIC_API.md).
 
-The supported game version is RimWorld `1.6`. Existing V1/V2 consumers and saved
+The supported game version is RimWorld `1.7` only. Existing V1/V2 consumers and saved
 data remain supported; V3 is additive. Obsolete public members are retained for
 this release candidate.
 
@@ -77,7 +78,7 @@ order. A framework-only installation intentionally has no consumer domains.
 
 ### A local build reports missing assemblies
 
-Supply a legitimate local RimWorld Managed directory and Harmony assembly. The
+Supply a legitimate local RimWorld 1.7 installation root and Harmony 3 assembly. The
 build scripts never download proprietary files; see [BUILDING.md](BUILDING.md).
 
 ### The API audit reports a change
@@ -95,6 +96,7 @@ idempotent migration. See [RUNTIME_TESTING.md](RUNTIME_TESTING.md).
 
 ## Project Documents
 
+- [RimWorld 1.7 / Waylith migration roadmap](ROADMAP_1_7_WAYLITH.md)
 - [Integration guide](INTEGRATION.md)
 - [Compatibility contract](API_COMPATIBILITY.md)
 - [Public API classifications](PUBLIC_API.md)

@@ -25,10 +25,9 @@ Public API changes require an intentional review of
 source/binary/save compatibility. Regenerate the baseline only after review:
 
 ```powershell
-pwsh ./DevTools/Run-KnowledgeFrameworkBehavioralTests.ps1 -SkipBuild `
-  -ManagedPath 'D:\Games\RimWorld\RimWorldWin64_Data\Managed' `
-  -HarmonyPath 'D:\Games\RimWorld\Mods\Harmony\Assemblies' `
-  -UpdatePublicApiBaseline
+$env:RIMWORLD_GAME_ROOT = 'D:\Games\RimWorld'
+$env:RIMWORLD_HARMONY_PATH = 'D:\Games\RimWorld\Mods\Harmony\1.7\Assemblies'
+dotnet run --project ./DevTools/BehavioralHarness/KnowledgeFramework.BehavioralHarness.csproj -c Release -- --game-root="$env:RIMWORLD_GAME_ROOT" --update-public-api-baseline="./DevTools/PublicApiBaseline.txt"
 ```
 
 ## Pull Requests

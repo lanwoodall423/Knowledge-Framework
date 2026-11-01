@@ -1,5 +1,5 @@
 param(
-    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.dll'),
+    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.dll'),
     [string]$ManifestDirectory = (Join-Path $PSScriptRoot 'BridgeAdapters')
 )
 
@@ -9,7 +9,7 @@ $versionPath = Join-Path $root 'VERSION'
 $aboutPath = Join-Path $root 'About/About.xml'
 $publicApiPath = Join-Path $root 'PUBLIC_API.md'
 $compatibilityPath = Join-Path $root 'API_COMPATIBILITY.md'
-$buildManifestPath = Join-Path $root '1.6/Assemblies/KnowledgeFramework.build.json'
+$buildManifestPath = Join-Path $root '1.7/Assemblies/KnowledgeFramework.build.json'
 
 if (-not (Test-Path -LiteralPath $versionPath -PathType Leaf)) { throw "VERSION is missing: $versionPath" }
 $version = (Get-Content -LiteralPath $versionPath -Raw).Trim()
@@ -26,6 +26,7 @@ if ($assemblyInfo.FileDescription -ne 'Knowledge Framework') { throw "AssemblyTi
 if ($assemblyInfo.ProductName -ne 'Knowledge Framework') { throw "Product metadata mismatch: $($assemblyInfo.ProductName)" }
 
 $about = [xml](Get-Content -LiteralPath $aboutPath -Raw)
+if (@($about.ModMetaData.supportedVersions.li).Count -ne 1 -or @($about.ModMetaData.supportedVersions.li)[0] -ne '1.7') { throw 'Only RimWorld 1.7 is supported.' }
 if ($about.ModMetaData.modVersion -ne $version) { throw "About.xml version mismatch: $($about.ModMetaData.modVersion) != $version" }
 
 foreach ($documentation in @($publicApiPath, $compatibilityPath)) {
@@ -35,10 +36,12 @@ foreach ($documentation in @($publicApiPath, $compatibilityPath)) {
     }
 }
 
-$manifests = @(Get-ChildItem -LiteralPath $ManifestDirectory -File -Filter '*.manifest.json')
-if ($manifests.Count -ne 1) { throw "Expected exactly one bridge manifest, found $($manifests.Count)." }
-$manifest = Get-Content -LiteralPath $manifests[0].FullName -Raw | ConvertFrom-Json
-if ($manifest.version -ne $version) { throw "Bridge manifest version mismatch: $($manifest.version) != $version" }
+$manifests = if (Test-Path -LiteralPath $ManifestDirectory -PathType Container) { @(Get-ChildItem -LiteralPath $ManifestDirectory -File -Filter '*.manifest.json') } else { @() }
+if ($manifests.Count -gt 1) { throw "Expected at most one 1.7 bridge manifest, found $($manifests.Count)." }
+if ($manifests.Count -eq 1) {
+    $manifest = Get-Content -LiteralPath $manifests[0].FullName -Raw | ConvertFrom-Json
+    if ($manifest.version -ne $version) { throw "Bridge manifest version mismatch: $($manifest.version) != $version" }
+} else { Write-Output 'releaseBridge=BLOCKED adapter not yet rebuilt for 1.7' }
 
 if (-not (Test-Path -LiteralPath $buildManifestPath -PathType Leaf)) { throw "Primary build manifest is missing: $buildManifestPath" }
 $buildManifest = Get-Content -LiteralPath $buildManifestPath -Raw | ConvertFrom-Json
@@ -46,4 +49,5 @@ if ($buildManifest.semanticVersion -ne $version) { throw "Primary build manifest
 if ($buildManifest.assemblyFile -ne [IO.Path]::GetFileName($AssemblyPath)) { throw "Primary build manifest assembly mismatch: $($buildManifest.assemblyFile)" }
 if ($buildManifest.dllSha256 -ne (Get-FileHash -LiteralPath $AssemblyPath -Algorithm SHA256).Hash) { throw 'Primary build manifest hash does not match the DLL.' }
 
-Write-Output "releaseContract=PASS version=$version assembly=$($assemblyName.Version) manifest=$($manifests[0].Name)"
+if ($buildManifest.rimWorldTargetVersion -ne '1.7' -or $buildManifest.targetFramework -ne 'net10.0') { throw 'RimWorld 1.7 / .NET 10 build contract mismatch.' }
+Write-Output "releaseContract=PASS version=$version assembly=$($assemblyName.Version) target=1.7"

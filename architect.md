@@ -1,6 +1,6 @@
 # Knowledge Framework 3 Architecture
 
-Knowledge Framework is a RimWorld 1.6 epistemic gameplay engine. Consumer mods own
+Knowledge Framework is a RimWorld 1.7 / Waylith epistemic gameplay engine. Consumer mods own
 domain balance and actions; the framework owns versioned schemas, indexed state,
 observation transactions, typed claims, contextual queries, progression contracts,
 transmission, persistence, diagnostics, and shared presentation.

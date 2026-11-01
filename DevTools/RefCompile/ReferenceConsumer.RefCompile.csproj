@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>ReferenceConsumer.RefCompile</AssemblyName>
+    <RootNamespace>ReferenceConsumer</RootNamespace>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <Deterministic>true</Deterministic>
+    <OutputPath>$(MSBuildThisFileDirectory)../../.artifacts/refcompile/consumer/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="KnowledgeFramework.RefCompile.csproj" />
+    <Compile Include="../../Examples/ReferenceConsumer/ReferenceConsumerMod.cs" />
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.7.4990-unstable" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

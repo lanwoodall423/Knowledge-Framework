@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Compile-only validation. Never substitute these reference assemblies for installed game DLLs in a release. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <AssemblyName>KnowledgeFramework.RefCompile</AssemblyName>
+    <RootNamespace>KnowledgeFramework</RootNamespace>
+    <OutputType>Library</OutputType>
+    <LangVersion>latest</LangVersion>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <GenerateDependencyFile>false</GenerateDependencyFile>
+    <Deterministic>true</Deterministic>
+    <OutputPath>$(MSBuildThisFileDirectory)../../.artifacts/refcompile/framework/</OutputPath>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../Source/**/*.cs" Exclude="../../Source/**/bin/**;../../Source/**/obj/**" />
+    <!-- Authorized signature-only packages. Version pins track the 1.7 unstable baseline. -->
+    <PackageReference Include="Krafs.Rimworld.Ref" Version="1.7.4990-unstable" PrivateAssets="all" />
+    <PackageReference Include="Lib.Harmony" Version="3.0.0-rc.4" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

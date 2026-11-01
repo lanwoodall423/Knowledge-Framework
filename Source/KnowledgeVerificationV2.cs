@@ -409,14 +409,21 @@ namespace KnowledgeFramework
             Pawn pawn = Find.Selector.SingleSelectedThing as Pawn ?? Find.CurrentMap?.mapPawns.FreeColonists.FirstOrDefault();
             KnowledgeVerificationResult result = RunGameTests(pawn);
             string reportPath = WriteReport(result);
-            Log.Message("[Knowledge Framework] Behavioral verification " + (result.Success ? "PASS" : "FAIL") +
+            Log.Message("[Knowledge Framework] Behavioral verification " + ((result.Success && reportPath != "unavailable") ? "PASS" : "FAIL") +
                 ": pure=" + result.purePassed + "/" + (result.purePassed + result.pureFailed) +
                 " game=" + result.gamePassed + "/" + (result.gamePassed + result.gameFailed) +
                 " unavailable=" + result.unavailable + " report=" + reportPath);
-            if (!result.Success)
-                Log.Warning("[Knowledge Framework] Behavioral verification failures: " + string.Join("; ", result.failures));
-            Messages.Message(result.Success ? "KnowledgeFramework_VerificationPassed".Translate() : "KnowledgeFramework_VerificationFailed".Translate(),
-                result.Success ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+            if (!result.Success || reportPath == "unavailable")
+                Log.Warning("[Knowledge Framework] Behavioral verification failures: " + string.Join("; ", result.failures) + "; report=" + reportPath);
+            Messages.Message((result.Success && reportPath != "unavailable") ? "KnowledgeFramework_VerificationPassed".Translate() : "KnowledgeFramework_VerificationFailed".Translate(),
+                (result.Success && reportPath != "unavailable") ? MessageTypeDefOf.PositiveEvent : MessageTypeDefOf.RejectInput, false);
+            // The RimTest recipe checks the debug-action execution result, not just this log.
+            // Never return successfully on failed or unavailable behavioral assertions.
+            if (!result.Success || reportPath == "unavailable")
+                throw new InvalidOperationException("Knowledge Framework behavioral verification " +
+                    (!result.Success ? "FAILED" : "report unavailable") +
+                    ": failures=" + string.Join("; ", result.failures) + "; unavailable=" +
+                    result.unavailable + "; report=" + reportPath);
         }
 
         private static string WriteReport(KnowledgeVerificationResult result)
@@ -426,6 +433,10 @@ namespace KnowledgeFramework
             {
                 StringBuilder report = new StringBuilder();
                 report.AppendLine("Knowledge Framework behavioral verification");
+                report.AppendLine("report-kind=behavioral-v2-v3");
+                report.AppendLine("status=" + (result.Success ? "PASS" : "FAIL"));
+                report.AppendLine("failure-count=" + result.failures.Count);
+                report.AppendLine("unavailable-count=" + result.unavailable);
                 report.AppendLine("pure passed=" + result.purePassed + " failed=" + result.pureFailed + " skipped=" + result.skipped + " unavailable=0");
                 report.AppendLine("game-state passed=" + result.gamePassed + " failed=" + result.gameFailed + " skipped=0 unavailable=" + result.unavailable);
                 report.AppendLine("manual-ui passed=0 failed=0 skipped=0 unavailable=1");

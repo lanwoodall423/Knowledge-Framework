@@ -1,9 +1,9 @@
 param(
-    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.dll'),
-    [string]$ManifestPath = (Join-Path $PSScriptRoot '../1.6/Assemblies/KnowledgeFramework.build.json'),
+    [string]$AssemblyPath = (Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.dll'),
+    [string]$ManifestPath = (Join-Path $PSScriptRoot '../1.7/Assemblies/KnowledgeFramework.build.json'),
     [string]$SourceRoot = (Join-Path $PSScriptRoot '..'),
     [string]$RimWorldTargetVersion = $env:RIMWORLD_TARGET_VERSION,
-    [string]$ManagedPath = $env:RIMWORLD_MANAGED_PATH,
+    [Alias('ManagedPath')] [string]$GameRoot = $env:RIMWORLD_GAME_ROOT,
     [string]$HarmonyAssemblyPath = $env:RIMWORLD_HARMONY_ASSEMBLY,
     [ValidateSet('Release')]
     [string]$Configuration = 'Release',
@@ -37,7 +37,7 @@ function Get-SourceTreeHash {
             if ($segment -eq '.git' -or $segment -eq '.rimctx' -or $segment -eq 'bin' -or $segment -eq 'obj' -or $segment -eq 'Build') { $excluded = $true; break }
         }
         if ($relative.StartsWith('.rimdev/profiles/', [StringComparison]::OrdinalIgnoreCase) -or
-            $relative.StartsWith('1.6/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
+            $relative.StartsWith('1.7/Assemblies/', [StringComparison]::OrdinalIgnoreCase) -or
             $relative.StartsWith('DevTools/BridgeAdapters/', [StringComparison]::OrdinalIgnoreCase) -or
             $fileInfo.Extension -in @('.pdb', '.dll', '.cache') -or
             $fileInfo.Name.EndsWith('.sourcelink.json', [StringComparison]::OrdinalIgnoreCase) -or
@@ -159,9 +159,8 @@ function Get-ExternalBuildInputs {
     }
     [ordered]@{
         assemblyCSharp = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'Assembly-CSharp.dll')
-        unityCore = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.CoreModule.dll')
-        unityGui = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.IMGUIModule.dll')
-        unityText = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityEngine.TextRenderingModule.dll')
+        unityStubs = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'UnityStubs.dll')
+        waylith = Get-ExternalAssemblyInput -Path (Join-Path $Managed 'Waylith.dll')
         harmony = Get-ExternalAssemblyInput -Path $Harmony
     }
 }
@@ -170,7 +169,8 @@ $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
 $assemblyFull = [IO.Path]::GetFullPath($AssemblyPath)
 $manifestFull = [IO.Path]::GetFullPath($ManifestPath)
 $sourceFull = [IO.Path]::GetFullPath($SourceRoot)
-if ([string]::IsNullOrWhiteSpace($RimWorldTargetVersion)) { $RimWorldTargetVersion = '1.6' }
+if ([string]::IsNullOrWhiteSpace($RimWorldTargetVersion)) { $RimWorldTargetVersion = '1.7' }
+if ($RimWorldTargetVersion -ne '1.7') { throw 'buildManifest=BLOCKED RimWorld 1.7 is the only supported target.' }
 if (-not (Test-Path -LiteralPath $assemblyFull -PathType Leaf)) { throw "Primary assembly is missing: $assemblyFull" }
 
 $version = Read-ReleaseVersion -Root $root
@@ -187,7 +187,7 @@ $deterministic = [string]$propertyGroup.Deterministic
 $continuousIntegrationBuild = [string]$propertyGroup.ContinuousIntegrationBuild
 $pathMap = [string]$propertyGroup.PathMap
 $toolchain = Get-ToolchainIdentity
-$externalInputs = Get-ExternalBuildInputs -Managed $ManagedPath -Harmony $HarmonyAssemblyPath
+$externalInputs = Get-ExternalBuildInputs -Managed $GameRoot -Harmony $HarmonyAssemblyPath
 
 if ($Verify) {
     $manifest = Get-ManifestObject -Path $manifestFull
@@ -211,7 +211,7 @@ if ($Verify) {
         $manifest.pathMap -ne $pathMap) {
         throw 'Build manifest deterministic compilation properties do not match the project.'
     }
-    $inputNames = @('assemblyCSharp', 'unityCore', 'unityGui', 'unityText', 'harmony')
+    $inputNames = @('assemblyCSharp', 'unityStubs', 'waylith', 'harmony')
     foreach ($inputName in $inputNames) {
         $manifestProperty = $manifest.externalInputs.PSObject.Properties[$inputName]
         if ($null -eq $manifestProperty -or $null -eq $manifestProperty.Value) { throw "Build manifest external input is missing: $inputName" }
